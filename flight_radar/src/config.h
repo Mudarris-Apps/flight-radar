@@ -21,3 +21,4 @@
 #define LABEL_VIEW_RADIUS_M     40000.0f
 #define AIRPORT_LABEL_RADIUS_M  60000.0f
 #define TAP_HIT_RADIUS_PX       22
+#define DISPLAY_ROTATION_DEG    180   // 0 or 180. 180 = flex cable exits to the right; LVGL sw rotation (SH8601 has no mirror-Y/swap-XY)

@@ -29,6 +29,14 @@ void setup() {
   knobInputStart();
 
   lvgl_port_lock(-1);
+  // The SH8601 driver offers mirror-X only (no mirror-Y / swap-XY), so the port
+  // runs with sw_rotate and 180 degrees is done by LVGL. LVGL's indev also
+  // rotates touch points for ROT_180, so the touch driver is left unmirrored.
+#if DISPLAY_ROTATION_DEG == 180
+  lv_disp_set_rotation(lv_disp_get_default(), LV_DISP_ROT_180);
+#elif DISPLAY_ROTATION_DEG != 0
+#error "DISPLAY_ROTATION_DEG must be 0 or 180"
+#endif
   uiInit(&store);
   lvgl_port_unlock();
 
