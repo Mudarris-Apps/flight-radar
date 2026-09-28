@@ -11,6 +11,7 @@
 #include "knob_input.h"
 #include "net_task.h"
 #include "radar_view.h"
+#include "selection.h"
 #include "status_bar.h"
 #include "ui_state.h"
 
@@ -94,6 +95,27 @@ int32_t g_pend_x = 0, g_pend_y = 0;
 uint32_t g_last_click_ms = 0;
 bool g_have_click = false;
 
+// Selection: `i` indexes st.snap, -1 clears. Logs one line and redraws trails.
+void setSelection(int i) {
+  if (i >= 0 && (size_t)i < st.snap_n) {
+    strncpy(st.selected_icao24, st.snap[i].last.icao24, sizeof(st.selected_icao24) - 1);
+    st.selected_icao24[sizeof(st.selected_icao24) - 1] = '\0';
+  } else {
+    st.selected_icao24[0] = '\0';
+    st.card_open = false;
+  }
+  Serial.printf("[sel] %s\n", st.selected_icao24[0] ? st.selected_icao24 : "none");
+  radarViewInvalidate(g_rv);
+}
+
+// After a snapshot change: drop a selection whose aircraft left the snapshot.
+void dropStaleSelection() {
+  if (!st.selected_icao24[0]) return;
+  for (size_t i = 0; i < st.snap_n; ++i)
+    if (strncmp(st.snap[i].last.icao24, st.selected_icao24, sizeof(st.selected_icao24)) == 0) return;
+  setSelection(-1);
+}
+
 void clampPan() {
   float lim = 0.9f * st.zoom.viewRadiusM();
   float d = hypotf(st.pan_x_m, st.pan_y_m);
@@ -148,8 +170,14 @@ void touchCb(lv_event_t *e) {
       st.pan_x_m = st.pan_y_m = 0.f;
       radarViewInvalidate(g_rv);
     } else {
+      // Single tap acts at once; a second tap within DOUBLE_TAP_MS still recentres.
       g_have_click = true;
       g_last_click_ms = now;
+      lv_indev_t *indev = lv_indev_get_act();
+      if (!indev) return;
+      lv_point_t p;
+      lv_indev_get_point(indev, &p);   // already rotated into logical coordinates
+      setSelection(aircraftLayerHitTest(p.x, p.y));
     }
   }
 }
@@ -164,7 +192,10 @@ void inputTimerCb(lv_timer_t *) {
         st.zoom.handleEvent(ev);
         rotated = true;
         break;
-      default:   // PRESS / LONG_PRESS: Tasks 13 to 15
+      case InputEvent::PRESS:
+        setSelection(selectNextByDistance(st.snap, st.snap_n, st.home, st.selected_icao24));
+        break;
+      default:   // LONG_PRESS: Tasks 14 to 15
         break;
     }
   }
@@ -174,9 +205,9 @@ void inputTimerCb(lv_timer_t *) {
   }
 }
 
-void refreshSnapshot() {
+bool refreshSnapshot() {   // true when a new snapshot was taken
   uint32_t gen = g_store->generation();
-  if (gen == st.snap_generation) return;
+  if (gen == st.snap_generation) return false;
   st.snap_n = g_store->snapshot(st.snap, MAX_AIRCRAFT);
   st.snap_generation = gen;
 #if RADAR_DIAG
@@ -191,6 +222,7 @@ void refreshSnapshot() {
     }
   }
   radarViewInvalidate(g_rv);
+  return true;
 }
 
 void tickTimerCb(lv_timer_t *) {
@@ -203,7 +235,7 @@ void tickTimerCb(lv_timer_t *) {
   if (anim) clampPan();   // keep home within 90 % of the shrinking view radius
   if (anim || g_was_animating) radarViewInvalidate(g_rv);   // includes the final settled frame
   g_was_animating = anim;
-  refreshSnapshot();
+  if (refreshSnapshot()) dropStaleSelection();
 #if RADAR_DIAG
   uint32_t t0 = micros();
 #endif
