@@ -7,7 +7,8 @@ positions scattered inside the 100 km box around Sydney Airport
 (-33.9461, 151.1772). The output is deterministic (fixed seed), so rerunning
 the script reproduces the committed file byte for byte.
 
-Rows 0 and 1 are fixed because the parser test asserts their values.
+Rows 0 and 1 are fixed (and just as invented) because the parser test
+asserts their values.
 
 Usage:
     python3 tools/gen_test_fixture.py
@@ -42,13 +43,13 @@ rnd = random.Random(SEED)
 def main():
     states = [
         # Asserted by the parser test: on ground, null baro/vertical rate/squawk.
-        row("7c4e21", "SYN100  ", TIME - 65, 151.1695, -33.9402, None, True,
-            6.17, 158.3, None, None, None, 0),
+        row("7c4e21", "SYN100  ", TIME - 42, 151.1695, -33.9402, None, True,
+            4.12, 158.3, None, None, None, 0),
         # Asserted by the parser test: squawk "3217", baro 2438.4.
-        row("7c2a01", "SYN201  ", TIME - 20, 150.8846, -34.6119, 2438.4, False,
-            57.52, 222.83, -2.6, 2600.5, "3217", 0),
+        row("7c5b37", "SYN101  ", TIME - 12, 150.8846, -34.3127, 2438.4, False,
+            118.6, 31.7, 5.2, 2499.36, "3217", 0),
     ]
-    used = {"7c4e21", "7c2a01"}
+    used = {"7c4e21", "7c5b37"}
     while len(states) < COUNT:
         icao = "7c%04x" % rnd.randint(0x3000, 0xffff)
         if icao in used:
