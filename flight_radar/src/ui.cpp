@@ -144,7 +144,7 @@ void touchCb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   // The settings panel is knob-only: ignore taps and drags meanwhile, but still let a
   // release through so a drag cut off by the panel opening clears st.dragging.
-  if (st.settings_open && (code == LV_EVENT_PRESSING || code == LV_EVENT_SHORT_CLICKED)) return;
+  if (st.settings_open && (code == LV_EVENT_PRESSING || code == LV_EVENT_CLICKED)) return;
   if (code == LV_EVENT_PRESSED) {
     g_dragging = false;
     g_pend_x = g_pend_y = 0;
@@ -170,7 +170,10 @@ void touchCb(lv_event_t *e) {
       st.dragging = false;
       radarViewInvalidate(g_rv);   // settled frame with trails
     }
-  } else if (code == LV_EVENT_SHORT_CLICKED) {
+  } else if (code == LV_EVENT_LONG_PRESSED) {
+    Serial.println("[touch] long");   // diagnostic only: CLICKED below still fires on release
+  } else if (code == LV_EVENT_CLICKED) {
+    // CLICKED, not SHORT_CLICKED: a tap held past LVGL's 400 ms long-press time still counts.
     if (g_dragging) return;
     uint32_t now = lv_tick_get();
     if (g_have_click && lv_tick_elaps(g_last_click_ms) <= DOUBLE_TAP_MS) {
@@ -318,7 +321,8 @@ void uiInit(AircraftStore *store) {
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_PRESSING, nullptr);
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_RELEASED, nullptr);
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_PRESS_LOST, nullptr);
-  lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_SHORT_CLICKED, nullptr);
+  lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_LONG_PRESSED, nullptr);
   aircraftLayerCreate(scr, &st, g_rv);   // sprites above the scope, below the status bar
   g_card = detailCardCreate(scr, &st);   // above the sprites, below the status bar
   g_bar = statusBarCreate(scr);
