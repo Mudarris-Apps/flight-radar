@@ -3,3 +3,6 @@ build/
 .DS_Store
 .superpowers/
 tests/build/
+*.swp
+.vscode/
+.idea/

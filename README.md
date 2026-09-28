@@ -270,3 +270,17 @@ otherwise, since it adds serial traffic every few seconds.
 - `tests/` - host-side unit tests for pure logic (`test.h` harness,
   `Makefile`, `test_*.cpp` files, `fixtures/` sample OpenSky responses);
   `tests/build/` is gitignored.
+
+## Contributing
+
+Contributions are welcome. See `CONTRIBUTING.md` for setup, running the
+tests and the secrets policy, and `SECURITY.md` for reporting
+vulnerabilities privately.
+
+## Licence
+
+MIT, see `LICENSE`. Some files copied from ESP32_Display_Panel and LVGL
+keep their own licences (CC0-1.0, Apache-2.0 and MIT), and the airport
+and aircraft data come from OurAirports and the OpenSky Network under
+their own terms. `NOTICE.md` lists every third-party component and its
+licence.
