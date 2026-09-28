@@ -1,3 +1,5 @@
 flight_radar/secrets.h
 build/
 .DS_Store
+.superpowers/
+tests/build/
