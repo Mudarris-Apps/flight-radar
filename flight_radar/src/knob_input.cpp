@@ -30,6 +30,7 @@ void knobInputStart() {
   g_queue = xQueueCreate(32, sizeof(InputEvent));
 
   g_knob = new ESP_Knob(6, 5);
+  g_knob->invertDirection();   // hardware: clockwise must emit ROTATE_RIGHT (zoom in)
   g_knob->begin();
   g_knob->attachLeftEventCallback(onKnobLeft);
   g_knob->attachRightEventCallback(onKnobRight);
