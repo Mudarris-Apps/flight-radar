@@ -340,23 +340,26 @@ void aircraftLayerTick(uint32_t now_ms) {
   }
 }
 
-int aircraftLayerHitTest(lv_coord_t x, lv_coord_t y) {
+int aircraftLayerHitTest(lv_coord_t x, lv_coord_t y, float *dmin) {
+  if (dmin) *dmin = -1.f;
   if (!g_st || !g_slots) return -1;
   const size_t n = g_st->snap_n < MAX_AIRCRAFT ? g_st->snap_n : MAX_AIRCRAFT;
   const int32_t r2 = (int32_t)TAP_HIT_RADIUS_PX * TAP_HIT_RADIUS_PX;
-  int best = -1;
-  int32_t best_d2 = r2 + 1;
+  int nearest = -1;
+  int32_t best_d2 = INT32_MAX;
   for (size_t i = 0; i < n; ++i) {
     const Slot &s = g_slots[i];
     if (!s.img_shown) continue;
     const int32_t dx = (int32_t)s.x - x, dy = (int32_t)s.y - y;
     const int32_t d2 = dx * dx + dy * dy;
-    if (d2 <= r2 && d2 < best_d2) {
-      best = (int)i;
+    if (d2 < best_d2) {
+      nearest = (int)i;
       best_d2 = d2;
     }
   }
-  return best;
+  if (nearest < 0) return -1;
+  if (dmin) *dmin = sqrtf((float)best_d2);
+  return best_d2 <= r2 ? nearest : -1;
 }
 
 int aircraftLayerVisibleCount() { return g_visible; }

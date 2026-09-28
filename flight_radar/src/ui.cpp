@@ -19,7 +19,6 @@
 namespace {
 
 const uint32_t DOUBLE_TAP_MS = 350;
-const int32_t DRAG_THRESHOLD_PX = 3;
 
 UiState st;
 AircraftStore *g_store = nullptr;
@@ -181,7 +180,10 @@ void touchCb(lv_event_t *e) {
       if (!indev) return;
       lv_point_t p;
       lv_indev_get_point(indev, &p);   // already rotated into logical coordinates
-      setSelection(aircraftLayerHitTest(p.x, p.y));
+      float dmin;
+      int hit = aircraftLayerHitTest(p.x, p.y, &dmin);
+      Serial.printf("[tap] x=%d y=%d hit=%d dmin=%.0f\n", (int)p.x, (int)p.y, hit, dmin);
+      setSelection(hit);
     }
   }
 }

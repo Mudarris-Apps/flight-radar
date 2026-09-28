@@ -38,6 +38,12 @@ void setup() {
 #error "DISPLAY_ROTATION_DEG must be 0 or 180"
 #endif
   uiInit(&store);
+  {
+    lv_disp_t *d = lv_disp_get_default();
+    if (d && d->driver)
+      Serial.printf("[disp] hor=%d ver=%d rotated=%d sw_rotate=%d\n", (int)d->driver->hor_res,
+                    (int)d->driver->ver_res, (int)d->driver->rotated, (int)d->driver->sw_rotate);
+  }
   lvgl_port_unlock();
 
   netTaskStart(&store);

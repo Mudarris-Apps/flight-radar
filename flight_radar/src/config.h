@@ -20,6 +20,7 @@
 #define SCOPE_MARGIN_PX         4
 #define LABEL_VIEW_RADIUS_M     40000.0f
 #define AIRPORT_LABEL_RADIUS_M  60000.0f
-#define TAP_HIT_RADIUS_PX       22
+#define TAP_HIT_RADIUS_PX       30
+#define DRAG_THRESHOLD_PX       10    // px of finger travel before a touch becomes a pan (LVGL scroll limit)
 #define DISPLAY_ROTATION_DEG    180   // 0 or 180. 180 = flex cable exits to the right; LVGL sw rotation (SH8601 has no mirror-Y/swap-XY)
 #define RADAR_DIAG              0     // serial timing diagnostics for the UI tick
