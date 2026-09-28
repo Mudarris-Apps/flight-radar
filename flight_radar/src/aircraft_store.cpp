@@ -1,4 +1,5 @@
 #include "aircraft_store.h"
+#include "metadata_table.h"
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
@@ -111,7 +112,7 @@ void AircraftStore::applyPoll(const AircraftReport *reports, size_t n, uint32_t 
       ac.last_seen_poll = poll_time;
       ac.stale = false;
       ac.in_use = true;
-      ac.meta = nullptr;
+      ac.meta = metadataLookup(r.icao24);
       maybeAppendTrail(ac, r.lat, r.lon, r.time_position);
       touched[free_idx] = true;
     }

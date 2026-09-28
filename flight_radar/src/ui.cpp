@@ -8,6 +8,7 @@
 #include "../secrets.h"
 #include "aircraft_layer.h"
 #include "config.h"
+#include "detail_card.h"
 #include "knob_input.h"
 #include "net_task.h"
 #include "radar_view.h"
@@ -24,6 +25,7 @@ UiState st;
 AircraftStore *g_store = nullptr;
 lv_obj_t *g_rv = nullptr;
 lv_obj_t *g_bar = nullptr;
+lv_obj_t *g_card = nullptr;
 char g_prev_icao[MAX_AIRCRAFT][7];   // icao24 last seen in each snapshot slot
 bool g_was_animating = false;
 uint32_t g_last_status_ms = 0;
@@ -102,10 +104,12 @@ void setSelection(int i) {
     st.selected_icao24[sizeof(st.selected_icao24) - 1] = '\0';
   } else {
     st.selected_icao24[0] = '\0';
+    if (st.card_open) Serial.println("[card] close");
     st.card_open = false;
   }
   Serial.printf("[sel] %s\n", st.selected_icao24[0] ? st.selected_icao24 : "none");
   radarViewInvalidate(g_rv);
+  detailCardRefresh(g_card);   // an open card follows the selection
 }
 
 // After a snapshot change: drop a selection whose aircraft left the snapshot.
@@ -195,7 +199,14 @@ void inputTimerCb(lv_timer_t *) {
       case InputEvent::PRESS:
         setSelection(selectNextByDistance(st.snap, st.snap_n, st.home, st.selected_icao24));
         break;
-      default:   // LONG_PRESS: Tasks 14 to 15
+      case InputEvent::LONG_PRESS:
+        if (st.selected_icao24[0]) {   // without a selection: settings (Task 15)
+          st.card_open = !st.card_open;
+          Serial.println(st.card_open ? "[card] open" : "[card] close");
+          detailCardRefresh(g_card);
+        }
+        break;
+      default:
         break;
     }
   }
@@ -248,6 +259,7 @@ void tickTimerCb(lv_timer_t *) {
   if (now - g_last_status_ms >= 1000) {
     g_last_status_ms = now;
     statusBarUpdate(g_bar);
+    detailCardRefresh(g_card);
   }
   ++g_ticks;
   if (now - g_last_log_ms >= 30000) {
@@ -292,6 +304,7 @@ void uiInit(AircraftStore *store) {
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_PRESS_LOST, nullptr);
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_SHORT_CLICKED, nullptr);
   aircraftLayerCreate(scr, &st, g_rv);   // sprites above the scope, below the status bar
+  g_card = detailCardCreate(scr, &st);   // above the sprites, below the status bar
   g_bar = statusBarCreate(scr);
 
 #if RADAR_DIAG
