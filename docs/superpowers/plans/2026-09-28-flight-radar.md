@@ -116,7 +116,7 @@ Home    makeHome(float lat, float lon);
 LocalXY toLocal(const Home&, float lat, float lon);
 float   distanceM(const Home&, float lat, float lon);
 BBox    bbox(const Home&, float radius_m);
-void    formatBBoxQuery(const BBox&, char *out, size_t n);   // "lamin=-34.8161&lamax=...&lomin=...&lomax=..."
+void    formatBBoxQuery(const BBox&, char *out, size_t n);   // "lamin=-34.8505&lamax=...&lomin=...&lomax=..."
 void    project(const Home&, const Projection&, float lat, float lon, float &px, float &py);
 bool    insideScope(const Projection&, float px, float py);   // within r_px of (cx,cy)
 float   scalePxPerM(const Projection&);
@@ -441,12 +441,12 @@ TEST(local_xy_of_home_is_origin) {
   CHECK_NEAR(p.x, 0, 0.01); CHECK_NEAR(p.y, 0, 0.01);
 }
 TEST(one_degree_north_is_110574_m) {
-  auto p = geo::toLocal(H, -32.917f, 151.1772f);
+  auto p = geo::toLocal(H, -32.9461f, 151.1772f);
   CHECK_NEAR(p.y, 110574, 1); CHECK_NEAR(p.x, 0, 0.01);
 }
-TEST(distance_to_yssy_is_about_14_km) {
-  float d = geo::distanceM(H, -33.9461f, 151.1772f);
-  CHECK(d > 13000 && d < 14500);   // 13.6 km by great circle
+TEST(distance_to_ysbk_is_about_17_5_km) {
+  float d = geo::distanceM(H, -33.9244f, 150.9888f);
+  CHECK(d > 17000 && d < 18000);   // 17.56 km by the flat-earth formula
 }
 TEST(bbox_100km) {
   auto b = geo::bbox(H, 100000);
@@ -454,7 +454,7 @@ TEST(bbox_100km) {
   CHECK_NEAR(b.lamax, -33.9461 + 0.9044, 0.002);
   CHECK_NEAR(b.lomax - b.lomin, 2 * 100000 / (111320 * std::cos(-33.9461 * M_PI / 180)), 0.002);
   char q[128]; geo::formatBBoxQuery(b, q, sizeof q);
-  CHECK(std::strncmp(q, "lamin=-34.8214&lamax=-33.0126&lomin=", 36) == 0);
+  CHECK(std::strncmp(q, "lamin=-34.8505&lamax=-33.0417&lomin=150.0943&lomax=152.2601", 62) == 0);
 }
 TEST(projection_centre_and_scale) {
   geo::Projection P{233, 233, 229, 100000, 0, 0};

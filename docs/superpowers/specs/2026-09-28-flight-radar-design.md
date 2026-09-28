@@ -11,9 +11,10 @@ location as rotated airplane sprites on a dark radar scope, with trails,
 knob-driven zoom, selection, and a detail card. Data comes from the
 OpenSky Network REST API over the board's WiFi.
 
-The default location in the example config is Sydney Airport:
-latitude -33.9461, longitude 151.1772. Within the 100 km ring: YSSY,
-YSBK, YSCN, YSRI, YSHL and Western Sydney International.
+The default location in the example config is Sydney Airport (latitude
+-33.9461, longitude 151.1772); set your own in `secrets.h`. Within the
+100 km ring: YSSY, YSBK, YSCN, YSRI, YSHL and Western Sydney
+International.
 
 ## Decisions already made
 
