@@ -27,9 +27,10 @@ versions the project is built and tested with:
 | ESP32_Button | 0.0.1 |
 | ArduinoJson | 7.4.3 |
 
-`tools/build.sh` points at the `arduino-cli` inside Arduino IDE 2 on
-macOS. If yours lives somewhere else, change the `CLI` line in the
-script.
+The scripts in `tools/` use `$ARDUINO_CLI` if you set it, otherwise
+`arduino-cli` on your `PATH`, otherwise the copy inside Arduino IDE 2 on
+macOS. `flash.sh` and `monitor.sh` pick the first `/dev/cu.usbmodem*`
+(macOS) or `/dev/ttyACM*` (Linux) port unless you pass one.
 
 Copy `flight_radar/secrets.example.h` to `flight_radar/secrets.h` and
 fill in your WiFi details, OpenSky API client credentials and home
@@ -70,7 +71,11 @@ The README covers what to do if flashing hangs at `Connecting....`.
 - Never commit `flight_radar/secrets.h`. It is in `.gitignore`; keep it
   there.
 - Never paste WiFi passwords, OpenSky client secrets or tokens into an
-  issue, a pull request or a log excerpt. Redact them first.
+  issue, a pull request or a log excerpt. Redact them first. Take extra
+  care with serial logs captured with the Arduino "Core Debug Level" at
+  Debug or above: the ESP32 core then logs HTTP and TLS detail, and
+  depending on the core version that can include the `Authorization`
+  header with the OpenSky bearer token. Treat such logs as secret.
 - If you think you have committed a secret, rotate it straight away, then
   tell us.
 

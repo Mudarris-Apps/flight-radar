@@ -1,5 +1,8 @@
 # Flight radar for the Viewe ESP32-S3 knob display
 
+> This is the original design. Where it and the code differ (button polarity, the tap event, the sprite hit radius, sprite tooling),
+> the code and `README.md` are authoritative.
+
 Date: 2026-09-28. Status: approved in conversation, implementation started same day.
 
 ## Purpose

@@ -9,8 +9,10 @@ the knob and the touchscreen used for zoom, selection and panning.
 Viewe ESP32-S3 round knob display (ESP32-S3, PSRAM, round touch AMOLED, a
 rotary encoder knob with a built-in push button). The Arduino sketch uses the
 `ESP32_Display_Panel` board abstraction plus LVGL v8 (`flight_radar/lv_conf.h`,
-`flight_radar/esp_*_conf.h`, `flight_radar/lvgl_v8_port.*` - copied from the
-panel's example and not edited by this project).
+`flight_radar/esp_*_conf.h`, `flight_radar/lvgl_v8_port.*`, copied from the
+panel's examples). Two of those files are edited: `esp_panel_board_supported_conf.h`
+selects the Viewe board and `lv_conf.h` changes two settings; `NOTICE.md`
+lists the exact changes. The rest are unmodified.
 
 The panel driver reports 472 x 466 pixels; the visible circle is 466 x 466.
 The code centres on `min(hor_res, ver_res)` rather than assuming a fixed size.
@@ -20,6 +22,19 @@ FQBN used for build/upload:
 ```
 esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,USBMode=hwcdc,CDCOnBoot=cdc
 ```
+
+## Prerequisites
+
+- `arduino-cli`, either on your `PATH` or the copy bundled with Arduino IDE 2.
+  The scripts in `tools/` use `$ARDUINO_CLI` if set, then `arduino-cli` on
+  `PATH`, then the Arduino IDE 2 copy on macOS.
+- Arduino core for ESP32 (`esp32:esp32`) 3.3.11.
+- These libraries in your Arduino libraries folder: lvgl 8.4.0,
+  ESP32_Display_Panel 1.0.4, ESP32_IO_Expander 1.1.1, esp-lib-utils 0.3.0,
+  ESP32_Knob 0.0.1, ESP32_Button 0.0.1, ArduinoJson 7.4.3.
+- For the host tests, `clang++` and `make`.
+
+`CONTRIBUTING.md` has the install commands.
 
 ## Secrets
 
@@ -70,12 +85,12 @@ tools/flash.sh [port]
 ```
 
 Wraps `arduino-cli upload`, using the port passed as an argument or the first
-`/dev/cu.usbmodem*` device found. Requires `tools/build.sh` to have run first
+`/dev/cu.usbmodem*` (macOS) or `/dev/ttyACM*` (Linux) device found. Requires `tools/build.sh` to have run first
 (it uploads from `build/`).
 
 **If it hangs at `Connecting....` for more than ~40 seconds:** stop it
-(Ctrl-C) and have a human hold the knob's button down while replugging the
-USB cable, then retry. Don't keep retrying blindly - this means the board
+(Ctrl-C), hold the knob's button down while replugging the USB cable, then
+retry. Don't keep retrying blindly - this means the board
 didn't drop into its bootloader and needs the manual button-hold recovery.
 (The button is on GPIO0, the same pin as the BOOT strap, which is why
 holding it while replugging forces the ROM bootloader.)
@@ -87,15 +102,18 @@ tools/monitor.sh [port] [seconds]
 ```
 
 Opens the serial monitor at 115200 baud for the given number of seconds
-(default 20), then exits automatically.
+(default 20), then exits automatically. The time limit uses `timeout`, or
+`gtimeout` from GNU coreutils on macOS; with neither installed the monitor
+runs until you press Ctrl-C.
 
-`tools/monitor.sh` has been unreliable on this machine: `arduino-cli monitor`
-sometimes attaches after the board's boot lines have already gone by, or
-exits early. When that happens, fall back to raw `stty`/`cat` in two steps:
+`arduino-cli monitor` can be unreliable: it sometimes attaches after the
+board's boot lines have already gone by, or exits early. When that happens,
+fall back to raw `stty`/`cat` in two steps:
 
 ```bash
-stty -f /dev/cu.usbmodem1101 115200 raw -echo
-cat /dev/cu.usbmodem1101
+stty -f /dev/cu.usbmodem1101 115200 raw -echo   # macOS: stty -f
+stty -F /dev/ttyACM0 115200 raw -echo           # Linux: stty -F
+cat /dev/cu.usbmodem1101                        # or /dev/ttyACM0
 ```
 
 (Ctrl-C to stop `cat`; adjust the device path to whatever port the board
@@ -149,8 +167,10 @@ task's state:
 ## Polling and the OpenSky credit budget
 
 The network task polls `/states/all` every 25 s (`POLL_INTERVAL_S` in
-`flight_radar/src/config.h`). OpenSky bills API credits by bounding-box area:
-a box up to 100 km x 100 km costs 1 credit per call. The free tier's daily
+`flight_radar/src/config.h`). OpenSky bills API credits by bounding-box area.
+The query box spans 100 km each side of home, so it is about 200 x 200 km,
+roughly 3.9 square degrees at Sydney's latitude, which sits inside OpenSky's
+cheapest tier (up to 25 square degrees, 1 credit per call). The free tier's daily
 allowance is 4000 credits, i.e. one call every 21.6 s to stay under budget
 over 24 hours; polling every 25 s uses at most 3456 calls/day, leaving
 headroom.
@@ -246,6 +266,10 @@ network access.
   round glass bezel on this panel.
 - A tap on an open detail card passes through to the scope beneath it (see
   "Using it" above) rather than being absorbed by the card.
+- There is no over-the-air update. TLS is pinned to ISRG Root X1, so if
+  OpenSky's certificate chain ever moves off that root, the board stops
+  connecting until it is reflashed over USB with firmware carrying the new
+  root certificate.
 - The "ago" figure in the status bar and detail card includes OpenSky's own
   reporting delay (typically 15-25 s) in addition to time since our last
   successful poll.
@@ -267,7 +291,9 @@ otherwise, since it adds serial traffic every few seconds.
 - `flight_radar/src/config.h` - tunable constants shared across the app
   (poll interval, zoom range, display rotation, diagnostics flag, etc).
 - `flight_radar/lv_conf.h`, `flight_radar/esp_*_conf.h`,
-  `flight_radar/lvgl_v8_port.*` - vendored board/LVGL port files, not edited.
+  `flight_radar/lvgl_v8_port.*` - vendored board/LVGL port files. Only
+  `esp_panel_board_supported_conf.h` (board selection) and `lv_conf.h` are
+  edited; see `NOTICE.md`.
   `lv_conf.h` sets `LV_COLOR_16_SWAP 1` (the panel wants byte-swapped RGB565)
   and a raised `LV_INV_BUF_SIZE` (128, so the sprite layer's many small
   invalidated rectangles don't overflow LVGL's per-frame list). The image is

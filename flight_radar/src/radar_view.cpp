@@ -1,7 +1,7 @@
 // radar_view.cpp: the scope itself. A single full-screen lv_obj whose
 // LV_EVENT_DRAW_MAIN handler paints rings, compass ticks, airports, trails and
-// the home marker straight onto the draw context. Sprites (Task 12) are
-// sibling objects created after this one, so they sit on top.
+// the home marker straight onto the draw context. Sprites (aircraft_layer.cpp)
+// are sibling objects created after this one, so they sit on top.
 //
 // The port renders in 20-line bands, so the draw handler runs once per band
 // for every refresh. Trail projection is therefore cached per frame state
@@ -218,7 +218,10 @@ bool ptInside(const geo::Projection &P, const CachedPt &q) {
 
 void drawTrails(lv_draw_ctx_t *ctx, const UiState *st, const geo::Projection &P) {
   if (!g_cache || !st->snap || st->snap_n == 0) return;
-  // Trails age in 5 s steps: the cache key and the fade both use this rounded clock.
+  // Trails only age when the scope redraws; nothing schedules a redraw just to
+  // fade them. Rounding the clock down to TRAIL_AGE_STEP_S keeps the cache key
+  // (and the fade) stable across the bands and frames of one redraw burst, so
+  // the trail projection is not rebuilt every frame.
   uint32_t now = netNowEpoch();
   now -= now % TRAIL_AGE_STEP_S;
   refreshTrailCache(st, P, now);
