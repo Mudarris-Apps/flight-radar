@@ -276,7 +276,9 @@ void drawCb(lv_event_t *e) {
   drawObsRing(ctx, st, P);
   drawCompass(ctx, P);
   drawAirports(ctx, st, P);
-  drawTrails(ctx, st, P);
+  // Trails are the expensive pass: skip them while zooming or dragging; the
+  // settled frame (ui.cpp invalidates once after either ends) draws them again.
+  if (!st->zoom.animating() && !st->dragging) drawTrails(ctx, st, P);
   drawHome(ctx, st, P);
 }
 

@@ -15,4 +15,5 @@ struct UiState {
   uint32_t snap_generation = 0;
   bool card_open = false;
   bool settings_open = false;
+  bool dragging = false;             // a pan drag is in progress (radar_view skips trails)
 };

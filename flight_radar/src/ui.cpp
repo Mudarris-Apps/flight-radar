@@ -26,45 +26,67 @@ lv_obj_t *g_bar = nullptr;
 char g_prev_icao[MAX_AIRCRAFT][7];   // icao24 last seen in each snapshot slot
 bool g_was_animating = false;
 uint32_t g_last_status_ms = 0;
-uint32_t g_last_age_ms = 0;
-const uint32_t TRAIL_AGE_INVALIDATE_MS = 5000;
 uint32_t g_last_log_ms = 0;
 uint32_t g_ticks = 0;
-uint32_t g_log_ticks = 0;      // g_ticks at the previous log line
-uint32_t g_layer_us_max = 0;   // slowest aircraftLayerTick since the previous log line
+
+#if RADAR_DIAG
+// Serial timing diagnostics, bucketed by what the UI is doing:
+// 0 idle creep, 1 the post-poll ease (EASE_MS after a new snapshot), 2 zoom or drag.
+uint32_t g_log_ticks = 0;
+uint32_t g_layer_us_max = 0;
 uint64_t g_layer_us_sum = 0;
 uint32_t g_prev_tick_ms = 0;
-uint32_t g_snap_change_ms = 0;              // when the last new snapshot arrived (sprites ease for EASE_MS)
-uint32_t g_ease_ms = 0, g_ease_ticks = 0;   // tick intervals inside the post-poll ease
-uint32_t g_idle_ms = 0, g_idle_ticks = 0;   // tick intervals outside it
+uint32_t g_snap_change_ms = 0;
+struct Bucket { uint32_t ticks, tick_ms, refr, refr_ms, full, full_ms; uint64_t px; };
+Bucket g_bucket[3] = {};
+const char *const BUCKET_NAME[3] = {"idle", "ease", "zoom/drag"};
 
-// LVGL refresh stats from the display driver's monitor_cb, split the same way.
-struct RefrStats { uint32_t n, ms, full, full_ms; uint64_t px; };
-RefrStats g_refr_idle = {}, g_refr_ease = {};
-
-bool inPostPollEase(uint32_t now) {
-  return g_snap_change_ms && now - g_snap_change_ms <= EASE_MS + UI_TICK_MS;
+int currentBucket(uint32_t now) {
+  if (st.zoom.animating() || st.dragging) return 2;
+  if (g_snap_change_ms && now - g_snap_change_ms <= EASE_MS + UI_TICK_MS) return 1;
+  return 0;
 }
 
 void refrMonitorCb(lv_disp_drv_t *drv, uint32_t time_ms, uint32_t px) {
-  RefrStats &r = inPostPollEase(millis()) ? g_refr_ease : g_refr_idle;
-  ++r.n;
-  r.ms += time_ms;
-  r.px += px;
+  Bucket &b = g_bucket[currentBucket(millis())];
+  ++b.refr;
+  b.refr_ms += time_ms;
+  b.px += px;
   if (px >= (uint32_t)drv->hor_res * (uint32_t)drv->ver_res) {
-    ++r.full;
-    r.full_ms += time_ms;
+    ++b.full;
+    b.full_ms += time_ms;
   }
 }
 
-void logRefr(const char *name, RefrStats &r) {
-  uint32_t pn = r.n - r.full;
-  Serial.printf("[ui] refresh %s: n=%u avg %.1f ms, avg %u px; full-screen n=%u avg %.1f ms; partial n=%u avg %.1f ms\n",
-                name, (unsigned)r.n, r.n ? (float)r.ms / r.n : 0.f, r.n ? (unsigned)(r.px / r.n) : 0u,
-                (unsigned)r.full, r.full ? (float)r.full_ms / r.full : 0.f,
-                (unsigned)pn, pn ? (float)(r.ms - r.full_ms) / pn : 0.f);
-  r = RefrStats{};
+void diagTickStart(uint32_t now) {
+  if (g_prev_tick_ms) {
+    Bucket &b = g_bucket[currentBucket(now)];
+    ++b.ticks;
+    b.tick_ms += now - g_prev_tick_ms;
+  }
+  g_prev_tick_ms = now;
 }
+
+void diagLog(uint32_t dt) {
+  uint32_t dticks = g_ticks - g_log_ticks;
+  g_log_ticks = g_ticks;
+  Serial.printf("[diag] tick period %.1f ms, sprites=%d/%d created, layer us avg=%u max=%u, lvgl stack hwm=%u B, heap=%u\n",
+                dticks ? (float)dt / (float)dticks : 0.f, aircraftLayerVisibleCount(), aircraftLayerCreatedCount(),
+                dticks ? (unsigned)(g_layer_us_sum / dticks) : 0u, (unsigned)g_layer_us_max,
+                (unsigned)uxTaskGetStackHighWaterMark(NULL), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  for (int i = 0; i < 3; ++i) {
+    Bucket &b = g_bucket[i];
+    uint32_t pn = b.refr - b.full;
+    Serial.printf("[diag] %-9s tick %.1f ms (n=%u); refresh n=%u avg %.1f ms %u px; full n=%u avg %.1f ms; partial avg %.1f ms\n",
+                  BUCKET_NAME[i], b.ticks ? (float)b.tick_ms / b.ticks : 0.f, (unsigned)b.ticks, (unsigned)b.refr,
+                  b.refr ? (float)b.refr_ms / b.refr : 0.f, b.refr ? (unsigned)(b.px / b.refr) : 0u, (unsigned)b.full,
+                  b.full ? (float)b.full_ms / b.full : 0.f, pn ? (float)(b.refr_ms - b.full_ms) / pn : 0.f);
+    b = Bucket{};
+  }
+  g_layer_us_sum = 0;
+  g_layer_us_max = 0;
+}
+#endif
 
 // Touch gesture state.
 bool g_dragging = false;
@@ -110,7 +132,13 @@ void touchCb(lv_event_t *e) {
     g_pend_y += v.y;
     if (abs(g_pend_x) > DRAG_THRESHOLD_PX || abs(g_pend_y) > DRAG_THRESHOLD_PX) {
       g_dragging = true;
+      st.dragging = true;   // radar_view skips the trail pass while dragging
       applyDrag(g_pend_x, g_pend_y);
+    }
+  } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+    if (st.dragging) {
+      st.dragging = false;
+      radarViewInvalidate(g_rv);   // settled frame with trails
     }
   } else if (code == LV_EVENT_SHORT_CLICKED) {
     if (g_dragging) return;
@@ -151,7 +179,9 @@ void refreshSnapshot() {
   if (gen == st.snap_generation) return;
   st.snap_n = g_store->snapshot(st.snap, MAX_AIRCRAFT);
   st.snap_generation = gen;
+#if RADAR_DIAG
   g_snap_change_ms = millis();
+#endif
   for (size_t i = 0; i < MAX_AIRCRAFT; ++i) {
     const char *icao = i < st.snap_n ? st.snap[i].last.icao24 : "";
     if (strncmp(g_prev_icao[i], icao, sizeof(g_prev_icao[i])) != 0) {
@@ -165,51 +195,40 @@ void refreshSnapshot() {
 
 void tickTimerCb(lv_timer_t *) {
   uint32_t now = millis();
-  if (g_prev_tick_ms) {
-    uint32_t iv = now - g_prev_tick_ms;
-    if (inPostPollEase(now)) { g_ease_ms += iv; ++g_ease_ticks; }
-    else { g_idle_ms += iv; ++g_idle_ticks; }
-  }
-  g_prev_tick_ms = now;
+#if RADAR_DIAG
+  diagTickStart(now);
+#endif
   st.zoom.tick(now);
   bool anim = st.zoom.animating();
   if (anim) clampPan();   // keep home within 90 % of the shrinking view radius
   if (anim || g_was_animating) radarViewInvalidate(g_rv);   // includes the final settled frame
   g_was_animating = anim;
   refreshSnapshot();
+#if RADAR_DIAG
   uint32_t t0 = micros();
+#endif
   aircraftLayerTick(now);
+#if RADAR_DIAG
   uint32_t layer_us = micros() - t0;
   g_layer_us_sum += layer_us;
   if (layer_us > g_layer_us_max) g_layer_us_max = layer_us;
+#endif
   if (now - g_last_status_ms >= 1000) {
     g_last_status_ms = now;
     statusBarUpdate(g_bar);
   }
-  if (now - g_last_age_ms >= TRAIL_AGE_INVALIDATE_MS) {
-    g_last_age_ms = now;
-    if (st.snap_n > 0) radarViewInvalidate(g_rv);   // trail fade follows the clock
-  }
   ++g_ticks;
   if (now - g_last_log_ms >= 30000) {
-    uint32_t dt = now - g_last_log_ms, dticks = g_ticks - g_log_ticks;
+#if RADAR_DIAG
+    uint32_t dt = now - g_last_log_ms;
+#endif
     g_last_log_ms = now;
-    g_log_ticks = g_ticks;
     Serial.printf("[ui] ticks=%u view=%.0f m pan=(%.0f,%.0f) snap=%u gen=%u status=\"%s\"\n",
                   (unsigned)g_ticks, st.zoom.viewRadiusM(), st.pan_x_m, st.pan_y_m,
                   (unsigned)st.snap_n, (unsigned)st.snap_generation, lv_label_get_text(g_bar));
-    Serial.printf("[ui] tick period %.1f ms, sprites=%d/%d created, layer us avg=%u max=%u, lvgl stack hwm=%u B\n",
-                  dticks ? (float)dt / (float)dticks : 0.f, aircraftLayerVisibleCount(), aircraftLayerCreatedCount(),
-                  dticks ? (unsigned)(g_layer_us_sum / dticks) : 0u, (unsigned)g_layer_us_max,
-                  (unsigned)uxTaskGetStackHighWaterMark(NULL));
-    Serial.printf("[ui] tick period idle %.1f ms (n=%u), post-poll ease %.1f ms (n=%u)\n",
-                  g_idle_ticks ? (float)g_idle_ms / g_idle_ticks : 0.f, (unsigned)g_idle_ticks,
-                  g_ease_ticks ? (float)g_ease_ms / g_ease_ticks : 0.f, (unsigned)g_ease_ticks);
-    g_layer_us_sum = 0;
-    g_layer_us_max = 0;
-    g_idle_ms = g_idle_ticks = g_ease_ms = g_ease_ticks = 0;
-    logRefr("idle", g_refr_idle);
-    logRefr("ease", g_refr_ease);
+#if RADAR_DIAG
+    diagLog(dt);
+#endif
   }
 }
 
@@ -237,12 +256,16 @@ void uiInit(AircraftStore *store) {
   g_rv = radarViewCreate(scr, &st);
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_PRESSED, nullptr);
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_PRESSING, nullptr);
+  lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_RELEASED, nullptr);
+  lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_PRESS_LOST, nullptr);
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_SHORT_CLICKED, nullptr);
   aircraftLayerCreate(scr, &st, g_rv);   // sprites above the scope, below the status bar
   g_bar = statusBarCreate(scr);
 
+#if RADAR_DIAG
   lv_disp_t *disp = lv_disp_get_default();
   if (disp && disp->driver && !disp->driver->monitor_cb) disp->driver->monitor_cb = refrMonitorCb;
+#endif
 
   lv_timer_create(inputTimerCb, INPUT_DRAIN_MS, &st);
   lv_timer_create(tickTimerCb, UI_TICK_MS, &st);
