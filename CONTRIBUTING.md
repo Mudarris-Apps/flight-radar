@@ -74,6 +74,32 @@ The README covers what to do if flashing hangs at `Connecting....`.
 - If you think you have committed a secret, rotate it straight away, then
   tell us.
 
+## The aircraft metadata table
+
+`flight_radar/src/metadata_table.cpp` is committed as an empty stub. The
+full table is derived from the OpenSky Network aircraft database under
+OpenSky's terms of use, so it must never be committed or attached to an
+issue or pull request. To use it on your own board, generate it locally:
+
+```bash
+python3 tools/gen_metadata_table.py <aircraftDatabase.csv path or URL>
+```
+
+Then tell git to ignore your local copy so it cannot slip into a commit:
+
+```bash
+git update-index --skip-worktree flight_radar/src/metadata_table.cpp
+```
+
+Undo that with `--no-skip-worktree` and `git checkout -- flight_radar/src/metadata_table.cpp`
+if you need to change the stub itself. CI fails any push or pull request
+where the committed file is not the stub. If you change the generator,
+change the lookup code in the stub to match.
+
+The parser test fixture, `tests/fixtures/states_sample.json`, is
+synthetic. If you need different rows, change `tools/gen_test_fixture.py`
+and rerun it rather than pasting a captured API response.
+
 ## Commit style
 
 - Write the subject line in the imperative mood ("fix knob debounce", not
@@ -84,8 +110,9 @@ The README covers what to do if flashing hangs at `Connecting....`.
 
 ## Pull requests
 
-Every push and pull request runs CI: the host tests on Linux with
-`clang++`, and a gitleaks secret scan over the full history. Please make
+Every push and pull request runs CI: a check that the metadata table is
+still the stub, the host tests on Linux with `clang++`, and a gitleaks
+secret scan over the full history. Please make
 sure both pass.
 
 CI does not build the firmware yet. A device build job (installing the

@@ -1,4 +1,9 @@
-// metadata_table.cpp: STUB, empty table. Task 16 regenerates this file from the OpenSky aircraft database.
+// metadata_table.cpp: STUB, empty table. This is the committed version.
+// To show registration, type, model and operator on the detail card, generate
+// the full table locally from the OpenSky aircraft database:
+//   python3 tools/gen_metadata_table.py <csv path or URL>
+// The generated table is OpenSky-derived data under OpenSky's terms of use.
+// Never commit it; CI fails if this file is not the stub.
 #include "metadata_table.h"
 #include <cstdlib>
 

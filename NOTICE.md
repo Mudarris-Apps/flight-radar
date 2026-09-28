@@ -48,13 +48,21 @@ licence file.
 - Airports: `flight_radar/src/airports_data.cpp` is generated from
   OurAirports' `airports.csv` (https://ourairports.com/data/). OurAirports
   releases its data to the public domain.
-- Aircraft metadata: `flight_radar/src/metadata_table.cpp` is generated
-  from the OpenSky Network aircraft database. The test fixture
-  `tests/fixtures/opensky_states_sydney.json` is a response captured from
-  the OpenSky Network REST API. Both are subject to the OpenSky Network
-  General Terms of Use and Data License Agreement
+- Aircraft metadata: the repository contains no OpenSky data.
+  `flight_radar/src/metadata_table.cpp` is committed as an empty stub.
+  You can generate the full table locally from the OpenSky Network
+  aircraft database with
+  `python3 tools/gen_metadata_table.py <csv path or URL>`. The result is
+  OpenSky-derived data, subject to the OpenSky Network General Terms of
+  Use and Data License Agreement
   (https://opensky-network.org/about/terms-of-use), which license the
-  data for non-profit research and non-profit education only.
+  data for non-profit research and non-profit education only. It must
+  not be committed or redistributed with this project.
+- Live data: at run time the firmware fetches state vectors from the
+  OpenSky Network REST API with your own account, under the same terms.
+- Test fixture: `tests/fixtures/states_sample.json` is synthetic, written
+  by `tools/gen_test_fixture.py`. Every row is invented; it contains no
+  OpenSky data.
 - OpenSky asks that publications using its data cite:
   Matthias Schäfer, Martin Strohmeier, Vincent Lenders, Ivan Martinovic
   and Matthias Wilhelm, "Bringing up OpenSky: A large-scale ADS-B sensor

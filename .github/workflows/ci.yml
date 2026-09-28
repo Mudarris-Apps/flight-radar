@@ -12,6 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check the metadata table is the committed stub
+        run: |
+          if ! grep -q 'const size_t METADATA_COUNT = 0;' flight_radar/src/metadata_table.cpp; then
+            echo "::error file=flight_radar/src/metadata_table.cpp::metadata_table.cpp must be the empty stub; the generated table is OpenSky-derived data and must not be committed"
+            exit 1
+          fi
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y clang make
       - name: Download ArduinoJson 7.4.3

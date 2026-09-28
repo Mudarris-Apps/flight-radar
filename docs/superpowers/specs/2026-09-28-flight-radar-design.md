@@ -103,7 +103,7 @@ flight-radar/
   tests/
     Makefile                     clang++ -std=c++17, builds and runs every test_*.cpp
     test_*.cpp                   one per pure module
-    fixtures/opensky_states_sydney.json   real response captured 2026-09-28
+    fixtures/states_sample.json   synthetic response from tools/gen_test_fixture.py
 ```
 
 Pure modules must not include `Arduino.h` or `lvgl.h`. They may include
@@ -344,9 +344,10 @@ through LVGL's own input device on the scope object (`LV_EVENT_CLICKED`,
 icao24 is in the Australian block `7c0000` to `7fffff`, and emits
 `src/metadata_table.h` as a sorted `const MetadataRow[]` of
 `{uint32_t icao24; char reg[8]; char typecode[5]; char model[24]; char
-operator[24];}` in flash, with a binary-search lookup. If the tool is
-never run, a committed stub with an empty table keeps the build working
-and the card shows "Unknown". This is the last task in the plan and is
+operator[24];}` in flash, with a binary-search lookup. The repository
+only ever commits the empty stub (the generated table is OpenSky-derived
+data under OpenSky's terms of use, so each user generates it locally);
+the stub keeps the build working and the card shows "Unknown". This is the last task in the plan and is
 best effort: if the CSV is unavailable, the stub stays.
 
 ## Airports table

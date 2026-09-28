@@ -524,7 +524,7 @@ Note the sign convention: `pan_x_m` positive moves the world east on screen (con
 
 **Files:**
 - Create: `flight_radar/src/aircraft.h`, `flight_radar/src/opensky_parser.h`, `flight_radar/src/opensky_parser.cpp`, `tests/test_opensky_parser.cpp`
-- Fixture: `tests/fixtures/opensky_states_sydney.json` (exists; 58 states, time 1790568225)
+- Fixture: `tests/fixtures/states_sample.json` (synthetic, from `tools/gen_test_fixture.py`; 58 states, time 1700000000)
 
 **Interfaces:**
 - Produces: `aircraft.h` and `opensky_parser.h` exactly as in the shared block.
@@ -541,12 +541,12 @@ OpenSky row layout (array indices): 0 icao24, 1 callsign, 2 origin_country, 3 ti
 #include <string>
 #include <cmath>
 static std::string readFixture() {
-  std::ifstream f("fixtures/opensky_states_sydney.json"); std::stringstream ss; ss << f.rdbuf(); return ss.str();
+  std::ifstream f("fixtures/states_sample.json"); std::stringstream ss; ss << f.rdbuf(); return ss.str();
 }
 TEST(parses_sydney_fixture) {
   auto s = readFixture(); AircraftReport out[200]; ParsedStates info{};
   CHECK(parseOpenSkyStates(s.data(), s.size(), out, 200, info));
-  CHECK(info.count == 58); CHECK(info.time == 1790568225u); CHECK(!info.states_null);
+  CHECK(info.count == 58); CHECK(info.time == 1700000000u); CHECK(!info.states_null);
   CHECK_STREQ(out[0].icao24, "7c4e21"); CHECK_STREQ(out[0].callsign, "SYN100");
   CHECK(out[0].on_ground); CHECK(std::isnan(out[0].baro_alt_m)); CHECK(std::isnan(out[0].vertical_rate_mps));
   CHECK_NEAR(out[0].lat, -33.9402, 1e-4); CHECK_NEAR(out[0].lon, 151.1695, 1e-4);
