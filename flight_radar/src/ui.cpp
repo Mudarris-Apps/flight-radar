@@ -13,6 +13,7 @@
 #include "net_task.h"
 #include "radar_view.h"
 #include "selection.h"
+#include "settings_screen.h"
 #include "status_bar.h"
 #include "ui_state.h"
 
@@ -25,6 +26,7 @@ AircraftStore *g_store = nullptr;
 lv_obj_t *g_rv = nullptr;
 lv_obj_t *g_bar = nullptr;
 lv_obj_t *g_card = nullptr;
+lv_obj_t *g_settings = nullptr;
 char g_prev_icao[MAX_AIRCRAFT][7];   // icao24 last seen in each snapshot slot
 bool g_was_animating = false;
 uint32_t g_last_status_ms = 0;
@@ -140,6 +142,9 @@ void applyDrag(int32_t dx, int32_t dy) {
 
 void touchCb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
+  // The settings panel is knob-only: ignore taps and drags meanwhile, but still let a
+  // release through so a drag cut off by the panel opening clears st.dragging.
+  if (st.settings_open && (code == LV_EVENT_PRESSING || code == LV_EVENT_SHORT_CLICKED)) return;
   if (code == LV_EVENT_PRESSED) {
     g_dragging = false;
     g_pend_x = g_pend_y = 0;
@@ -192,6 +197,11 @@ void inputTimerCb(lv_timer_t *) {
   InputEvent ev;
   bool rotated = false;
   while (knobInputPop(ev)) {
+    if (settingsScreenIsOpen(g_settings)) {   // the modal panel takes every knob event
+      settingsScreenHandle(g_settings, ev);
+      if (!settingsScreenIsOpen(g_settings)) radarViewInvalidate(g_rv);   // trails redraw at the new length
+      continue;
+    }
     switch (ev) {
       case InputEvent::ROTATE_LEFT:
       case InputEvent::ROTATE_RIGHT:
@@ -202,10 +212,13 @@ void inputTimerCb(lv_timer_t *) {
         setSelection(selectNextByDistance(st.snap, st.snap_n, st.home, st.selected_icao24));
         break;
       case InputEvent::LONG_PRESS:
-        if (st.selected_icao24[0]) {   // without a selection: settings (Task 15)
+        if (st.selected_icao24[0]) {
           st.card_open = !st.card_open;
           Serial.println(st.card_open ? "[card] open" : "[card] close");
           detailCardRefresh(g_card);
+        } else {
+          settingsScreenOpen(g_settings);
+          st.settings_open = true;
         }
         break;
       default:
@@ -293,6 +306,7 @@ void uiInit(AircraftStore *store) {
   }
   memset(g_prev_icao, 0, sizeof(g_prev_icao));
   st.home = geo::makeHome(HOME_LAT, HOME_LON);
+  st.trail_window_s = settingsLoadTrailWindow();
 
   lv_obj_t *scr = lv_scr_act();
   lv_obj_set_style_bg_color(scr, lv_color_hex(0x05080C), 0);
@@ -308,6 +322,7 @@ void uiInit(AircraftStore *store) {
   aircraftLayerCreate(scr, &st, g_rv);   // sprites above the scope, below the status bar
   g_card = detailCardCreate(scr, &st);   // above the sprites, below the status bar
   g_bar = statusBarCreate(scr);
+  g_settings = settingsScreenCreate(scr, &st);   // modal, above everything
 
 #if RADAR_DIAG
   lv_disp_t *disp = lv_disp_get_default();
