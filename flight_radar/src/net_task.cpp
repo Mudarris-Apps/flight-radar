@@ -6,6 +6,7 @@
 #include "freertos/semphr.h"
 #include "../secrets.h"
 #include "config.h"
+#include "epoch.h"
 #include "geo.h"
 #include "opensky_client.h"
 #include "opensky_parser.h"
@@ -189,5 +190,5 @@ uint32_t netNowEpoch() {
   uint32_t epoch = g_status.last_poll_epoch, at = g_status.last_poll_millis;
   xSemaphoreGive(g_mutex);
   if (!have) return 0;
-  return epoch + (millis() - at) / 1000;
+  return epochFrom(epoch, at, millis());
 }
