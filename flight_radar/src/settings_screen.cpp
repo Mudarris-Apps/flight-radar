@@ -107,13 +107,11 @@ bool settingsScreenHandle(lv_obj_t *s, InputEvent e) {
       uint32_t v = OPTION_S[c->highlight];
       c->st->trail_window_s = v;
       settingsSaveTrailWindow(v);
-      c->st->settings_open = false;
       hidePanel(s);
       return true;
     }
     case InputEvent::LONG_PRESS:
       Serial.println("[settings] cancel");
-      c->st->settings_open = false;
       hidePanel(s);
       return true;
     default:

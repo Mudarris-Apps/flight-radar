@@ -144,7 +144,7 @@ void touchCb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   // The settings panel is knob-only: ignore taps and drags meanwhile, but still let a
   // release through so a drag cut off by the panel opening clears st.dragging.
-  if (st.settings_open && (code == LV_EVENT_PRESSING || code == LV_EVENT_CLICKED)) return;
+  if (settingsScreenIsOpen(g_settings) && (code == LV_EVENT_PRESSING || code == LV_EVENT_CLICKED)) return;
   if (code == LV_EVENT_PRESSED) {
     g_dragging = false;
     g_pend_x = g_pend_y = 0;
@@ -221,7 +221,6 @@ void inputTimerCb(lv_timer_t *) {
           detailCardRefresh(g_card);
         } else {
           settingsScreenOpen(g_settings);
-          st.settings_open = true;
         }
         break;
       default:
