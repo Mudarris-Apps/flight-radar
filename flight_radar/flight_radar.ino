@@ -7,6 +7,7 @@
 #include "src/geo.h"
 #include "src/aircraft_store.h"
 #include "src/net_task.h"
+#include "src/knob_input.h"
 
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;
@@ -32,6 +33,20 @@ void setup() {
   static AircraftStore store(geo::makeHome(HOME_LAT, HOME_LON), OBS_RADIUS_M);
   g_store = &store;
   netTaskStart(&store);
+  knobInputStart();
+}
+
+const char *inputEventName(InputEvent e) {
+  switch (e) {
+    case InputEvent::ROTATE_LEFT:  return "ROTATE_LEFT";
+    case InputEvent::ROTATE_RIGHT: return "ROTATE_RIGHT";
+    case InputEvent::PRESS:        return "PRESS";
+    case InputEvent::LONG_PRESS:   return "LONG_PRESS";
+    case InputEvent::TAP:          return "TAP";
+    case InputEvent::DOUBLE_TAP:   return "DOUBLE_TAP";
+    case InputEvent::DRAG:         return "DRAG";
+  }
+  return "?";
 }
 
 // Temporary status print for Task 9 verification; replaced by the UI later.
@@ -45,5 +60,12 @@ void loop() {
                   (unsigned)st.aircraft_count, (unsigned)st.next_poll_in_s, (unsigned)netNowEpoch(),
                   (unsigned)g_store->count());
   }
+
+  // Temporary event log for Task 10 verification; the UI will consume these later.
+  InputEvent ev;
+  while (knobInputPop(ev)) {
+    Serial.printf("[knob] %s\n", inputEventName(ev));
+  }
+
   delay(50);
 }
