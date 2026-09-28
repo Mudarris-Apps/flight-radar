@@ -4,9 +4,14 @@
 #include "lvgl_v8_port.h"
 #include "secrets.h"
 #include "src/config.h"
+#include "src/geo.h"
+#include "src/aircraft_store.h"
+#include "src/net_task.h"
 
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;
+
+static AircraftStore *g_store = nullptr;
 
 void setup() {
   Serial.begin(115200);
@@ -23,6 +28,22 @@ void setup() {
   lv_obj_set_style_text_color(l, lv_color_hex(0x2F8F5A), 0);
   lv_obj_center(l);
   lvgl_port_unlock();
+
+  static AircraftStore store(geo::makeHome(HOME_LAT, HOME_LON), OBS_RADIUS_M);
+  g_store = &store;
+  netTaskStart(&store);
 }
 
-void loop() { delay(1000); }
+// Temporary status print for Task 9 verification; replaced by the UI later.
+void loop() {
+  static uint32_t last = 0;
+  if (millis() - last >= 5000) {
+    last = millis();
+    NetStatus st = netStatusGet();
+    Serial.printf("[main] net state=%u http=%u rate=%d aircraft=%u next=%us epoch=%u store=%u\n",
+                  (unsigned)st.state, (unsigned)st.http_code, st.rate_remaining,
+                  (unsigned)st.aircraft_count, (unsigned)st.next_poll_in_s, (unsigned)netNowEpoch(),
+                  (unsigned)g_store->count());
+  }
+  delay(50);
+}
