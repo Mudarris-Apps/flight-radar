@@ -2,12 +2,15 @@
 
 The code in this repository is released under the MIT licence (see
 `LICENSE`), with the exceptions below. Third-party files keep their
-original licences and their SPDX headers are preserved.
+original licences and their SPDX headers are preserved. Full licence
+texts for those files are in `LICENSES/`: `LICENSES/Apache-2.0.txt` and
+`LICENSES/MIT-LVGL.txt`.
 
 ## Files copied from other projects
 
-These files come from the `lvgl_v8_port` example of ESP32_Display_Panel
-(https://github.com/esp-arduino-libs/ESP32_Display_Panel), copyright
+These files come from the Arduino LVGL v8 examples of ESP32_Display_Panel
+1.0.4 (https://github.com/esp-arduino-libs/ESP32_Display_Panel, for
+example `examples/arduino/gui/lvgl_v8/squareline_wifi_clock/`), copyright
 Espressif Systems (Shanghai) CO LTD:
 
 | File | Licence |
@@ -19,12 +22,29 @@ Espressif Systems (Shanghai) CO LTD:
 | `flight_radar/esp_panel_drivers_conf.h` | Apache-2.0 |
 | `flight_radar/esp_utils_conf.h` | Apache-2.0 |
 
-The CC0-1.0 header on the two port files matches the upstream example
-in ESP32_Display_Panel 1.0.4 (`examples/*/lvgl_v8_port/`).
+The CC0-1.0 header on the two port files matches the upstream examples
+in ESP32_Display_Panel 1.0.4.
 
 `flight_radar/lv_conf.h` is LVGL's `lv_conf_template.h` for v8.4.0, as
-shipped in the ESP32_Display_Panel examples, with a few settings changed. LVGL is MIT licensed, copyright LVGL Kft
-(https://github.com/lvgl/lvgl).
+shipped in the same ESP32_Display_Panel examples. LVGL is MIT licensed,
+copyright LVGL Kft (https://github.com/lvgl/lvgl); the licence text is in
+`LICENSES/MIT-LVGL.txt`.
+
+### Modifications
+
+Compared with the upstream example copies, two files were changed and the
+rest are unmodified:
+
+- `flight_radar/esp_panel_board_supported_conf.h`: set
+  `ESP_PANEL_BOARD_DEFAULT_USE_SUPPORTED` to `1` and uncommented
+  `#define BOARD_VIEWE_UEDX46460015_MD50ET`, selecting the Viewe board.
+- `flight_radar/lv_conf.h`: set `LV_COLOR_16_SWAP` to `1` (the SH8601
+  panel wants byte-swapped RGB565) and added `#define LV_INV_BUF_SIZE 128`
+  (the default of 32 overflows when many sprites move in one frame).
+
+`lvgl_v8_port.cpp`, `lvgl_v8_port.h`, `esp_panel_board_custom_conf.h`,
+`esp_panel_drivers_conf.h` and `esp_utils_conf.h` are byte-for-byte the
+upstream copies.
 
 ## Libraries used at build time
 
