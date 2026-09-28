@@ -33,6 +33,38 @@ uint32_t g_ticks = 0;
 uint32_t g_log_ticks = 0;      // g_ticks at the previous log line
 uint32_t g_layer_us_max = 0;   // slowest aircraftLayerTick since the previous log line
 uint64_t g_layer_us_sum = 0;
+uint32_t g_prev_tick_ms = 0;
+uint32_t g_snap_change_ms = 0;              // when the last new snapshot arrived (sprites ease for EASE_MS)
+uint32_t g_ease_ms = 0, g_ease_ticks = 0;   // tick intervals inside the post-poll ease
+uint32_t g_idle_ms = 0, g_idle_ticks = 0;   // tick intervals outside it
+
+// LVGL refresh stats from the display driver's monitor_cb, split the same way.
+struct RefrStats { uint32_t n, ms, full, full_ms; uint64_t px; };
+RefrStats g_refr_idle = {}, g_refr_ease = {};
+
+bool inPostPollEase(uint32_t now) {
+  return g_snap_change_ms && now - g_snap_change_ms <= EASE_MS + UI_TICK_MS;
+}
+
+void refrMonitorCb(lv_disp_drv_t *drv, uint32_t time_ms, uint32_t px) {
+  RefrStats &r = inPostPollEase(millis()) ? g_refr_ease : g_refr_idle;
+  ++r.n;
+  r.ms += time_ms;
+  r.px += px;
+  if (px >= (uint32_t)drv->hor_res * (uint32_t)drv->ver_res) {
+    ++r.full;
+    r.full_ms += time_ms;
+  }
+}
+
+void logRefr(const char *name, RefrStats &r) {
+  uint32_t pn = r.n - r.full;
+  Serial.printf("[ui] refresh %s: n=%u avg %.1f ms, avg %u px; full-screen n=%u avg %.1f ms; partial n=%u avg %.1f ms\n",
+                name, (unsigned)r.n, r.n ? (float)r.ms / r.n : 0.f, r.n ? (unsigned)(r.px / r.n) : 0u,
+                (unsigned)r.full, r.full ? (float)r.full_ms / r.full : 0.f,
+                (unsigned)pn, pn ? (float)(r.ms - r.full_ms) / pn : 0.f);
+  r = RefrStats{};
+}
 
 // Touch gesture state.
 bool g_dragging = false;
@@ -119,6 +151,7 @@ void refreshSnapshot() {
   if (gen == st.snap_generation) return;
   st.snap_n = g_store->snapshot(st.snap, MAX_AIRCRAFT);
   st.snap_generation = gen;
+  g_snap_change_ms = millis();
   for (size_t i = 0; i < MAX_AIRCRAFT; ++i) {
     const char *icao = i < st.snap_n ? st.snap[i].last.icao24 : "";
     if (strncmp(g_prev_icao[i], icao, sizeof(g_prev_icao[i])) != 0) {
@@ -132,6 +165,12 @@ void refreshSnapshot() {
 
 void tickTimerCb(lv_timer_t *) {
   uint32_t now = millis();
+  if (g_prev_tick_ms) {
+    uint32_t iv = now - g_prev_tick_ms;
+    if (inPostPollEase(now)) { g_ease_ms += iv; ++g_ease_ticks; }
+    else { g_idle_ms += iv; ++g_idle_ticks; }
+  }
+  g_prev_tick_ms = now;
   st.zoom.tick(now);
   bool anim = st.zoom.animating();
   if (anim) clampPan();   // keep home within 90 % of the shrinking view radius
@@ -159,12 +198,18 @@ void tickTimerCb(lv_timer_t *) {
     Serial.printf("[ui] ticks=%u view=%.0f m pan=(%.0f,%.0f) snap=%u gen=%u status=\"%s\"\n",
                   (unsigned)g_ticks, st.zoom.viewRadiusM(), st.pan_x_m, st.pan_y_m,
                   (unsigned)st.snap_n, (unsigned)st.snap_generation, lv_label_get_text(g_bar));
-    Serial.printf("[ui] tick period %.1f ms, sprites=%d, layer us avg=%u max=%u, lvgl stack hwm=%u B\n",
-                  dticks ? (float)dt / (float)dticks : 0.f, aircraftLayerVisibleCount(),
+    Serial.printf("[ui] tick period %.1f ms, sprites=%d/%d created, layer us avg=%u max=%u, lvgl stack hwm=%u B\n",
+                  dticks ? (float)dt / (float)dticks : 0.f, aircraftLayerVisibleCount(), aircraftLayerCreatedCount(),
                   dticks ? (unsigned)(g_layer_us_sum / dticks) : 0u, (unsigned)g_layer_us_max,
                   (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    Serial.printf("[ui] tick period idle %.1f ms (n=%u), post-poll ease %.1f ms (n=%u)\n",
+                  g_idle_ticks ? (float)g_idle_ms / g_idle_ticks : 0.f, (unsigned)g_idle_ticks,
+                  g_ease_ticks ? (float)g_ease_ms / g_ease_ticks : 0.f, (unsigned)g_ease_ticks);
     g_layer_us_sum = 0;
     g_layer_us_max = 0;
+    g_idle_ms = g_idle_ticks = g_ease_ms = g_ease_ticks = 0;
+    logRefr("idle", g_refr_idle);
+    logRefr("ease", g_refr_ease);
   }
 }
 
@@ -195,6 +240,9 @@ void uiInit(AircraftStore *store) {
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_SHORT_CLICKED, nullptr);
   aircraftLayerCreate(scr, &st, g_rv);   // sprites above the scope, below the status bar
   g_bar = statusBarCreate(scr);
+
+  lv_disp_t *disp = lv_disp_get_default();
+  if (disp && disp->driver && !disp->driver->monitor_cb) disp->driver->monitor_cb = refrMonitorCb;
 
   lv_timer_create(inputTimerCb, INPUT_DRAIN_MS, &st);
   lv_timer_create(tickTimerCb, UI_TICK_MS, &st);

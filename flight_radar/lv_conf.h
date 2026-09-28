@@ -80,6 +80,8 @@
 /*Default display refresh period. LVG will redraw changed areas with this period time*/
 #define LV_DISP_DEF_REFR_PERIOD 30      /*[ms]*/
 
+#define LV_INV_BUF_SIZE 128   /* Deliberate edit: default 32 overflows to a full-screen redraw when ~50 sprites move in one frame */
+
 /*Input device read period in milliseconds*/
 #define LV_INDEV_DEF_READ_PERIOD 30     /*[ms]*/
 

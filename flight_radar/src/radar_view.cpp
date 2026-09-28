@@ -253,21 +253,8 @@ void drawTrails(lv_draw_ctx_t *ctx, const UiState *st, const geo::Projection &P)
         lv_draw_line(ctx, &d, &p1, &p2);
       }
     }
-
-    // Leader: newest reported point to the eased sprite position (Task 12 fills motion).
-    if (!st->motion) continue;
-    const SpriteMotion &m = st->motion[i];
-    if (!m.initialised) continue;
-    float lx, ly;
-    geo::project(st->home, P, m.cur_lat, m.cur_lon, lx, ly);
-    const CachedPt &last = pts[n - 1];
-    lv_point_t p1 = {last.x, last.y}, p2 = {toCoord(lx), toCoord(ly)};
-    lv_area_t seg = {LV_MIN(p1.x, p2.x), LV_MIN(p1.y, p2.y), LV_MAX(p1.x, p2.x), LV_MAX(p1.y, p2.y)};
-    seg.x1 -= 2; seg.y1 -= 2; seg.x2 += 2; seg.y2 += 2;
-    if (!_lv_area_is_on(&seg, ctx->clip_area)) continue;
-    d.opa = LV_OPA_COVER;
-    d.width = 1;
-    lv_draw_line(ctx, &d, &p1, &p2);
+    // The leader (newest trail point to the eased sprite) is an lv_line in aircraft_layer,
+    // so sprite motion never invalidates the scope.
   }
 }
 
