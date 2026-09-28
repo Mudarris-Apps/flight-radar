@@ -59,10 +59,14 @@ lv_obj_t *detailCardCreate(lv_obj_t *parent, UiState *st) {
   lv_obj_set_style_text_color(g_card.header, lv_color_white(), 0);
   lv_label_set_text(g_card.header, "");
 
-  // Content-width block centred under the header: the round glass clips the card's
-  // lower corners, so a left-edge column would lose its first characters near the bottom.
+  // Fixed-width wrapping block centred under the header. The round glass clips the card's
+  // lower corners: at the last body row the visible chord starts about 29 px inside the
+  // card's left edge, so a 240 px block (20 px inset from the 278 px content box) keeps
+  // every line start on screen. Lines are left-aligned within it; long ones wrap.
   g_card.body = lv_label_create(card);
-  lv_obj_set_style_max_width(g_card.body, 280, 0);
+  lv_obj_set_width(g_card.body, 240);
+  lv_label_set_long_mode(g_card.body, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(g_card.body, LV_TEXT_ALIGN_LEFT, 0);
   lv_obj_align(g_card.body, LV_ALIGN_TOP_MID, 0, 26);
   lv_obj_set_style_text_font(g_card.body, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(g_card.body, lv_color_hex(0xC8D2DC), 0);
