@@ -30,6 +30,7 @@ const uint32_t COL_SELECTED = 0xFFFFFF;
 const uint32_t COL_HOME = 0xFFFFFF;
 
 const size_t MAX_AIRPORTS_DRAWN = 64;
+const uint32_t TRAIL_AGE_STEP_S = 5;
 
 struct CachedPt { lv_coord_t x, y; uint32_t t; };
 
@@ -117,8 +118,19 @@ void drawRings(lv_draw_ctx_t *ctx, const geo::Projection &P) {
     snprintf(buf, sizeof(buf), "%d km", k * s);
     drawText(ctx, buf, toCoord(P.cx - 30.f), toCoord(label_y), 60, COL_RING_LABEL, LV_TEXT_ALIGN_CENTER);
   }
-  float r_obs = OBS_RADIUS_M * scale;
-  if (r_obs <= P.r_px + 2.f) drawCircle(ctx, P.cx, P.cy, r_obs, 2, COL_SCOPE);
+}
+
+// Observation ring: OBS_RADIUS_M around home, so it follows pan. Skipped only
+// when the circle cannot cross the scope disc (scope wholly inside the ring,
+// or the ring wholly outside the scope).
+void drawObsRing(lv_draw_ctx_t *ctx, const UiState *st, const geo::Projection &P) {
+  float hx, hy;
+  geo::project(st->home, P, st->home.lat, st->home.lon, hx, hy);
+  float r_obs = OBS_RADIUS_M * geo::scalePxPerM(P);
+  float d = hypotf(hx - P.cx, hy - P.cy);
+  if (r_obs - d > P.r_px + 2.f) return;   // scope entirely inside the ring
+  if (d - r_obs > P.r_px + 2.f) return;   // ring entirely outside the scope
+  drawCircle(ctx, hx, hy, r_obs, 2, COL_SCOPE);
 }
 
 void drawCompass(lv_draw_ctx_t *ctx, const geo::Projection &P) {
@@ -206,7 +218,9 @@ bool ptInside(const geo::Projection &P, const CachedPt &q) {
 
 void drawTrails(lv_draw_ctx_t *ctx, const UiState *st, const geo::Projection &P) {
   if (!g_cache || !st->snap || st->snap_n == 0) return;
+  // Trails age in 5 s steps: the cache key and the fade both use this rounded clock.
   uint32_t now = netNowEpoch();
+  now -= now % TRAIL_AGE_STEP_S;
   refreshTrailCache(st, P, now);
   const TrailCache &c = *g_cache;
   float window = (float)(st->trail_window_s > 0 ? st->trail_window_s : 1);
@@ -272,6 +286,7 @@ void drawCb(lv_event_t *e) {
   if (!st || !ctx) return;
   geo::Projection P = makeProjection(obj, st);
   drawRings(ctx, P);
+  drawObsRing(ctx, st, P);
   drawCompass(ctx, P);
   drawAirports(ctx, st, P);
   drawTrails(ctx, st, P);

@@ -25,6 +25,8 @@ lv_obj_t *g_bar = nullptr;
 char g_prev_icao[MAX_AIRCRAFT][7];   // icao24 last seen in each snapshot slot
 bool g_was_animating = false;
 uint32_t g_last_status_ms = 0;
+uint32_t g_last_age_ms = 0;
+const uint32_t TRAIL_AGE_INVALIDATE_MS = 5000;
 uint32_t g_last_log_ms = 0;
 uint32_t g_ticks = 0;
 
@@ -102,7 +104,10 @@ void inputTimerCb(lv_timer_t *) {
         break;
     }
   }
-  if (rotated) radarViewInvalidate(g_rv);
+  if (rotated) {
+    clampPan();
+    radarViewInvalidate(g_rv);
+  }
 }
 
 void refreshSnapshot() {
@@ -125,12 +130,16 @@ void tickTimerCb(lv_timer_t *) {
   uint32_t now = millis();
   st.zoom.tick(now);
   bool anim = st.zoom.animating();
+  if (anim) clampPan();   // keep home within 90 % of the shrinking view radius
   if (anim || g_was_animating) radarViewInvalidate(g_rv);   // includes the final settled frame
   g_was_animating = anim;
   refreshSnapshot();
   if (now - g_last_status_ms >= 1000) {
     g_last_status_ms = now;
     statusBarUpdate(g_bar);
+  }
+  if (now - g_last_age_ms >= TRAIL_AGE_INVALIDATE_MS) {
+    g_last_age_ms = now;
     if (st.snap_n > 0) radarViewInvalidate(g_rv);   // trail fade follows the clock
   }
   ++g_ticks;
@@ -143,6 +152,9 @@ void tickTimerCb(lv_timer_t *) {
 }
 
 }  // namespace
+
+UiState *uiState() { return &st; }
+lv_obj_t *uiRadarView() { return g_rv; }
 
 void uiInit(AircraftStore *store) {
   g_store = store;
@@ -164,6 +176,7 @@ void uiInit(AircraftStore *store) {
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_PRESSED, nullptr);
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_PRESSING, nullptr);
   lv_obj_add_event_cb(g_rv, touchCb, LV_EVENT_SHORT_CLICKED, nullptr);
+  // Later tasks create the sprite layer here, between the radar view and the status bar.
   g_bar = statusBarCreate(scr);
 
   lv_timer_create(inputTimerCb, INPUT_DRAIN_MS, &st);

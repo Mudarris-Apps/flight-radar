@@ -32,7 +32,7 @@ void statusBarUpdate(lv_obj_t *bar) {
     case NetState::OK: {
       uint32_t now = netNowEpoch();
       uint32_t ago = now > s.last_poll_epoch ? now - s.last_poll_epoch : 0;
-      snprintf(buf, sizeof(buf), "%u aircraft" STATUS_SEP "%u s ago", (unsigned)s.aircraft_count, (unsigned)ago);
+      snprintf(buf, sizeof(buf), "%u aircraft" STATUS_SEP "%us ago", (unsigned)s.aircraft_count, (unsigned)ago);
       break;
     }
     case NetState::WIFI_CONNECTING: snprintf(buf, sizeof(buf), "WIFI CONNECTING"); break;
