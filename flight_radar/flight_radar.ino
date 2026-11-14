@@ -17,6 +17,10 @@ static AircraftStore *g_store = nullptr;
 
 void setup() {
   Serial.begin(115200);
+  // With USB plugged in but no serial monitor reading, every print waited up to the
+  // default 100 ms for buffer space. The UI logs on each tap and knob press, so input
+  // stalled for seconds. 0 = drop log output nobody is reading instead of blocking.
+  Serial.setTxTimeoutMs(0);
   delay(200);
   Serial.printf("[boot] flight_radar, reset reason %d\n", (int)esp_reset_reason());
   Board *board = new Board();

@@ -37,8 +37,18 @@ void onKnobLeft(int /*count*/, void * /*usr_data*/) { push(InputEvent::ROTATE_LE
 void onKnobRight(int /*count*/, void * /*usr_data*/) { push(InputEvent::ROTATE_RIGHT); }
 
 // ESP32_Button callbacks also run in the library's task context.
-void onButtonSingleClick(void * /*button_handle*/, void * /*usr_data*/) { pushButton(InputEvent::PRESS); }
-void onButtonLongPressStart(void * /*button_handle*/, void * /*usr_data*/) { pushButton(InputEvent::LONG_PRESS); }
+// PRESS fires on release instead of on the library's SINGLE_CLICK, which waits a
+// further 180 ms after release in case a double click follows (unused here) and
+// made every press feel late. A release that ends a long press is not a PRESS.
+volatile bool g_long_fired = false;
+void onButtonDown(void * /*button_handle*/, void * /*usr_data*/) { g_long_fired = false; }
+void onButtonUp(void * /*button_handle*/, void * /*usr_data*/) {
+  if (!g_long_fired) pushButton(InputEvent::PRESS);
+}
+void onButtonLongPressStart(void * /*button_handle*/, void * /*usr_data*/) {
+  g_long_fired = true;
+  pushButton(InputEvent::LONG_PRESS);
+}
 
 }  // namespace
 
@@ -58,7 +68,8 @@ void knobInputStart() {
   // low with the internal pull-up (`true` meant active high with a pull-down, so
   // the idle pin read as held and fired a LONG_PRESS 1.5 s after every boot).
   g_button = new Button(GPIO_NUM_0, false);
-  g_button->attachSingleClickEventCb(onButtonSingleClick, nullptr);
+  g_button->attachPressDownEventCb(onButtonDown, nullptr);
+  g_button->attachPressUpEventCb(onButtonUp, nullptr);
   g_button->attachLongPressStartEventCb(onButtonLongPressStart, nullptr);
   Serial.printf("[knob] start at %u ms, gpio0=%d\n", (unsigned)g_start_ms, digitalRead(0));
 }
