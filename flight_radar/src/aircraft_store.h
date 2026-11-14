@@ -10,6 +10,8 @@ public:
   const Aircraft *find(const char *icao24) const;
   size_t snapshot(Aircraft *out, size_t max) const;   // copies in_use entries
   uint32_t generation() const;                        // increments on every applyPoll
+  void   setHome(const geo::Home &home);               // re-centres the radius and clears every aircraft (they belong to the old area)
+  geo::Home home() const;
   static size_t trailWindow(const Aircraft &a, uint32_t now, uint32_t window_s, TrailPoint *out, size_t max);  // oldest first
   void lock() const; void unlock() const;             // FreeRTOS mutex on device, no-op on host
 private:

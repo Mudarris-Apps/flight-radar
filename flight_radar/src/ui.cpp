@@ -16,6 +16,7 @@
 #include "settings_screen.h"
 #include "status_bar.h"
 #include "ui_state.h"
+#include "wifi_screen.h"
 
 namespace {
 
@@ -27,11 +28,13 @@ lv_obj_t *g_rv = nullptr;
 lv_obj_t *g_bar = nullptr;
 lv_obj_t *g_card = nullptr;
 lv_obj_t *g_settings = nullptr;
+lv_obj_t *g_wifi = nullptr;
 char g_prev_icao[MAX_AIRCRAFT][7];   // icao24 last seen in each snapshot slot
 bool g_was_animating = false;
 uint32_t g_last_status_ms = 0;
 uint32_t g_last_log_ms = 0;
 uint32_t g_ticks = 0;
+uint32_t g_home_gen = 0;
 
 #if RADAR_DIAG
 // Serial timing diagnostics, bucketed by what the UI is doing:
@@ -151,7 +154,9 @@ void touchCb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   // The settings panel is knob-only: ignore taps and drags meanwhile, but still let a
   // release through so a drag cut off by the panel opening clears st.dragging.
-  if (settingsScreenIsOpen(g_settings) && (code == LV_EVENT_PRESSING || code == LV_EVENT_CLICKED)) return;
+  if ((settingsScreenIsOpen(g_settings) || wifiScreenIsOpen(g_wifi)) &&
+      (code == LV_EVENT_PRESSING || code == LV_EVENT_CLICKED))
+    return;
   if (code == LV_EVENT_PRESSED) {
     g_dragging = false;
     g_pend_x = g_pend_y = 0;
@@ -207,6 +212,10 @@ void inputTimerCb(lv_timer_t *) {
   InputEvent ev;
   bool rotated = false;
   while (knobInputPop(ev)) {
+    if (wifiScreenIsOpen(g_wifi)) {   // the Wi-Fi screen covers everything and takes every knob event
+      wifiScreenHandle(g_wifi, ev);
+      continue;
+    }
     if (settingsScreenIsOpen(g_settings)) {   // the modal panel takes every knob event
       settingsScreenHandle(g_settings, ev);
       if (!settingsScreenIsOpen(g_settings)) radarViewInvalidate(g_rv);   // trails redraw at the new length
@@ -270,7 +279,17 @@ void tickTimerCb(lv_timer_t *) {
   if (anim) clampPan();   // keep home within 90 % of the shrinking view radius
   if (anim || g_was_animating) radarViewInvalidate(g_rv);   // includes the final settled frame
   g_was_animating = anim;
+  uint32_t home_gen;
+  geo::Home home = netHome(&home_gen);
+  if (home_gen != g_home_gen) {   // joined a network somewhere else: re-centre the radar
+    g_home_gen = home_gen;
+    st.home = home;
+    st.pan_x_m = st.pan_y_m = 0.f;
+    setSelection(-1);
+    radarViewInvalidate(g_rv);
+  }
   if (refreshSnapshot()) dropStaleSelection();
+  wifiScreenTick(g_wifi, now);
 #if RADAR_DIAG
   uint32_t t0 = micros();
 #endif
@@ -314,7 +333,7 @@ void uiInit(AircraftStore *store) {
     return;
   }
   memset(g_prev_icao, 0, sizeof(g_prev_icao));
-  st.home = geo::makeHome(HOME_LAT, HOME_LON);
+  st.home = netHome(&g_home_gen);
   st.trail_window_s = settingsLoadTrailWindow();
 
   lv_obj_t *scr = lv_scr_act();
@@ -333,6 +352,8 @@ void uiInit(AircraftStore *store) {
   g_card = detailCardCreate(scr, &st);   // above the sprites, below the status bar
   g_bar = statusBarCreate(scr);
   g_settings = settingsScreenCreate(scr, &st);   // modal, above everything
+  g_wifi = wifiScreenCreate(scr);                // full screen, above the settings panel
+  settingsScreenSetWifiCallback([] { wifiScreenOpen(g_wifi); });
 
 #if RADAR_DIAG
   lv_disp_t *disp = lv_disp_get_default();
