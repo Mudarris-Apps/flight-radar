@@ -161,6 +161,21 @@ size_t AircraftStore::snapshot(Aircraft *out, size_t max) const {
 
 uint32_t AircraftStore::generation() const { return generation_; }
 
+void AircraftStore::setHome(const geo::Home &home) {
+  lock();
+  home_ = home;
+  for (int j = 0; j < MAX_AIRCRAFT; j++) table_[j] = Aircraft{};
+  generation_++;
+  unlock();
+}
+
+geo::Home AircraftStore::home() const {
+  lock();
+  geo::Home h = home_;
+  unlock();
+  return h;
+}
+
 size_t AircraftStore::trailWindow(const Aircraft &a, uint32_t now, uint32_t window_s, TrailPoint *out, size_t max) {
   size_t len = a.trail_len;
   if (len == 0 || max == 0) return 0;

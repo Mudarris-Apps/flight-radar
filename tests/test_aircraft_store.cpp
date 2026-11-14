@@ -55,4 +55,12 @@ TEST(store_full_drops_extra) {
   for (int i = 0; i < MAX_AIRCRAFT + 5; i++) { char id[7]; std::snprintf(id, 7, "%06x", 0x7c0000 + i); a[i] = rep(id, -33.9f, 151.0f, 100); }
   s.applyPoll(a, MAX_AIRCRAFT + 5, 100); CHECK(s.count() == MAX_AIRCRAFT);
 }
+TEST(set_home_clears_and_recentres_radius) {
+  AircraftStore s(H, 100000); AircraftReport a[1] = {rep("7c0001", -33.9f, 151.0f, 100)};
+  s.applyPoll(a, 1, 100); CHECK(s.count() == 1); uint32_t g = s.generation();
+  geo::Home mel = geo::makeHome(-37.81f, 144.96f);   // Melbourne, ~700 km away
+  s.setHome(mel); CHECK(s.count() == 0); CHECK(s.generation() == g + 1); CHECK_NEAR(s.home().lat, -37.81, 1e-4);
+  s.applyPoll(a, 1, 125); CHECK(s.count() == 0);                         // Sydney aircraft now out of radius
+  AircraftReport m[1] = {rep("7c0002", -37.7f, 145.0f, 125)}; s.applyPoll(m, 1, 125); CHECK(s.count() == 1);
+}
 TEST_MAIN()

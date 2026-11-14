@@ -36,7 +36,10 @@ void statusBarUpdate(lv_obj_t *bar) {
       break;
     }
     case NetState::WIFI_CONNECTING: snprintf(buf, sizeof(buf), "WIFI CONNECTING"); break;
-    case NetState::WIFI_DOWN:       snprintf(buf, sizeof(buf), "WIFI DOWN"); break;
+    case NetState::WIFI_DOWN:
+      if (netWifiNeedsSetup()) snprintf(buf, sizeof(buf), "NO WIFI" STATUS_SEP "HOLD KNOB");
+      else snprintf(buf, sizeof(buf), "WIFI DOWN");
+      break;
     case NetState::AUTH_FAILED:     snprintf(buf, sizeof(buf), "OPENSKY AUTH FAILED"); break;
     case NetState::RATE_LIMITED: {
       uint32_t mins = s.next_poll_in_s > 0 ? (s.next_poll_in_s + 59) / 60 : POLL_BACKOFF_S / 60;

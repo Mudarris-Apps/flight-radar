@@ -1,4 +1,4 @@
-// settings_screen.cpp: a 260 x 200 centred panel picking the trail length; the choice lives in NVS.
+// settings_screen.cpp: a 260 x 240 centred panel picking the trail length (kept in NVS), plus a Wi-Fi row.
 #include "settings_screen.h"
 #include <Arduino.h>
 #include <Preferences.h>
@@ -11,12 +11,15 @@ const char *const NVS_KEY = "trail_s";
 const int N_OPTIONS = 4;
 const uint32_t OPTION_S[N_OPTIONS] = {300, 600, 1200, 1800};
 const char *const OPTION_LABEL[N_OPTIONS] = {"5 min", "10 min", "20 min", "30 min"};
+const int N_ROWS = N_OPTIONS + 1;   // the last row opens the Wi-Fi screen
+const int WIFI_ROW = N_OPTIONS;
 const int ROW_W = 200, ROW_H = 30, ROW_Y0 = 34, ROW_STEP = 36;
 
 struct Settings {
   UiState *st = nullptr;
-  lv_obj_t *row[N_OPTIONS] = {};
+  lv_obj_t *row[N_ROWS] = {};
   int highlight = 0;
+  void (*on_wifi)() = nullptr;
 };
 Settings g_set;   // one settings screen per UI
 
@@ -27,7 +30,7 @@ int indexOf(uint32_t s) {
 }
 
 void paintRows(Settings *c) {
-  for (int i = 0; i < N_OPTIONS; ++i) {
+  for (int i = 0; i < N_ROWS; ++i) {
     bool on = i == c->highlight;
     lv_obj_set_style_bg_opa(c->row[i], on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_text_color(c->row[i], on ? lv_color_black() : lv_color_hex(0xC8D2DC), 0);
@@ -41,7 +44,7 @@ void hidePanel(lv_obj_t *s) { lv_obj_add_flag(s, LV_OBJ_FLAG_HIDDEN); }
 lv_obj_t *settingsScreenCreate(lv_obj_t *parent, UiState *st) {
   g_set.st = st;
   lv_obj_t *s = lv_obj_create(parent);
-  lv_obj_set_size(s, 260, 200);
+  lv_obj_set_size(s, 260, 240);
   lv_obj_center(s);
   lv_obj_set_style_radius(s, 18, 0);
   lv_obj_set_style_bg_color(s, lv_color_hex(0x0C1218), 0);
@@ -62,7 +65,7 @@ lv_obj_t *settingsScreenCreate(lv_obj_t *parent, UiState *st) {
   lv_obj_set_style_text_color(title, lv_color_hex(0x3E7A55), 0);
   lv_label_set_text(title, "TRAIL LENGTH");
 
-  for (int i = 0; i < N_OPTIONS; ++i) {
+  for (int i = 0; i < N_ROWS; ++i) {
     lv_obj_t *r = lv_label_create(s);
     lv_obj_set_size(r, ROW_W, ROW_H);
     lv_obj_align(r, LV_ALIGN_TOP_MID, 0, ROW_Y0 + i * ROW_STEP);
@@ -71,7 +74,7 @@ lv_obj_t *settingsScreenCreate(lv_obj_t *parent, UiState *st) {
     lv_obj_set_style_pad_top(r, (ROW_H - 18) / 2, 0);   // centre the 16 px font's ~18 px line vertically
     lv_obj_set_style_text_align(r, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(r, &lv_font_montserrat_16, 0);
-    lv_label_set_text(r, OPTION_LABEL[i]);
+    lv_label_set_text(r, i == WIFI_ROW ? LV_SYMBOL_WIFI "  Wi-Fi" : OPTION_LABEL[i]);
     g_set.row[i] = r;
   }
   int h = indexOf(st ? st->trail_window_s : TRAIL_WINDOW_DEFAULT_S);
@@ -96,7 +99,7 @@ bool settingsScreenHandle(lv_obj_t *s, InputEvent e) {
   Settings *c = static_cast<Settings *>(lv_obj_get_user_data(s));
   switch (e) {
     case InputEvent::ROTATE_RIGHT:
-      if (c->highlight < N_OPTIONS - 1) ++c->highlight;
+      if (c->highlight < N_ROWS - 1) ++c->highlight;
       paintRows(c);
       return true;
     case InputEvent::ROTATE_LEFT:
@@ -104,6 +107,11 @@ bool settingsScreenHandle(lv_obj_t *s, InputEvent e) {
       paintRows(c);
       return true;
     case InputEvent::PRESS: {
+      if (c->highlight == WIFI_ROW) {
+        hidePanel(s);
+        if (c->on_wifi) c->on_wifi();
+        return true;
+      }
       uint32_t v = OPTION_S[c->highlight];
       c->st->trail_window_s = v;
       settingsSaveTrailWindow(v);
@@ -118,6 +126,8 @@ bool settingsScreenHandle(lv_obj_t *s, InputEvent e) {
       return false;
   }
 }
+
+void settingsScreenSetWifiCallback(void (*cb)()) { g_set.on_wifi = cb; }
 
 bool settingsScreenIsOpen(lv_obj_t *s) { return s && !lv_obj_has_flag(s, LV_OBJ_FLAG_HIDDEN); }
 
