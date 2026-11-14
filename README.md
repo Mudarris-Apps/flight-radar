@@ -51,6 +51,13 @@ OpenSky client ID and secret come from an OpenSky Network account (API client
 credentials, not the account password); `HOME_LAT`/`HOME_LON` are the centre
 of the 100 km observation radius.
 
+## Airline logos (optional)
+
+Run `python3 tools/gen_airline_logos.py` before building to show each
+airline's tail logo next to its aircraft (taken from the callsign, e.g.
+`QFA123` is Qantas). The generated file must never be committed;
+`CONTRIBUTING.md` has the details.
+
 ## Host tests
 
 Pure logic (geometry, parsing, storage, dead reckoning, zoom, selection,

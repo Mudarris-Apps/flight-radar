@@ -101,6 +101,21 @@ if you need to change the stub itself. CI fails any push or pull request
 where the committed file is not the stub. If you change the generator,
 change the lookup code in the stub to match.
 
+## Airline tail logos
+
+`flight_radar/src/airline_logos.cpp` is also committed as an empty stub. The
+logos are airline trademarks, so they are generated locally and never
+committed:
+
+```bash
+python3 tools/gen_airline_logos.py          # every logo available, or list ICAO codes
+git update-index --skip-worktree flight_radar/src/airline_logos.cpp
+```
+
+The script downloads the tail logos from `Jxck-S/airline-logos`, shrinks them
+to 22 x 22 and writes LVGL pixel data. CI fails any push where the committed
+file is not the stub.
+
 The parser test fixture, `tests/fixtures/states_sample.json`, is
 synthetic. If you need different rows, change `tools/gen_test_fixture.py`
 and rerun it rather than pasting a captured API response.
