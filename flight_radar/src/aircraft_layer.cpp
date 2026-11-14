@@ -16,11 +16,17 @@
 #include <Arduino.h>
 #include <cmath>
 #include <cstring>
+#include "airline_logos.h"
 #include "config.h"
+#include "esp_heap_caps.h"
 #include "geo.h"
 #include "net_task.h"
 #include "radar_view.h"
 #include "sprites/plane_24.h"
+
+#if LV_COLOR_DEPTH != 16 || LV_COLOR_16_SWAP != 1
+#error "airline_logos.cpp pixels are RGB565 byte-swapped: regenerate them if lv_conf.h colour settings change"
+#endif
 
 namespace {
 
@@ -50,6 +56,11 @@ struct Slot {
   bool label_shown;
   lv_coord_t lx, ly;      // label position last applied
   char text[9];
+  lv_obj_t *logo;         // airline tail logo between the sprite and the label
+  int logo_idx;           // AIRLINE_LOGOS row for `text`, -1 none
+  int logo_src;           // row last set as the image source, -1 never
+  bool logo_shown;
+  lv_coord_t gx, gy;      // logo position last applied
 };
 
 UiState *g_st = nullptr;
@@ -64,6 +75,26 @@ int32_t g_raised_orig_index = -1;   // its child index before raising
 bool g_ring_shown = false;
 lv_coord_t g_ring_x = NO_POS, g_ring_y = NO_POS;
 int g_visible = 0;
+
+lv_img_dsc_t *g_logo_dsc = nullptr;   // one per AIRLINE_LOGOS row, PSRAM, built on first use
+
+const lv_img_dsc_t *logoDsc(int idx) {
+  if (idx < 0 || (size_t)idx >= AIRLINE_LOGOS_COUNT) return nullptr;
+  if (!g_logo_dsc) {
+    g_logo_dsc = static_cast<lv_img_dsc_t *>(
+        heap_caps_calloc(AIRLINE_LOGOS_COUNT, sizeof(lv_img_dsc_t), MALLOC_CAP_SPIRAM));
+    if (!g_logo_dsc) return nullptr;
+  }
+  lv_img_dsc_t &d = g_logo_dsc[idx];
+  if (!d.data) {
+    d.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+    d.header.w = AIRLINE_LOGO_W;
+    d.header.h = AIRLINE_LOGO_H;
+    d.data_size = AIRLINE_LOGO_BYTES;
+    d.data = AIRLINE_LOGOS[idx].data;
+  }
+  return &d;
+}
 
 uint8_t g_plane_argb_map[24 * 24 * LV_IMG_PX_SIZE_ALPHA_BYTE];
 lv_img_dsc_t g_plane_argb;
@@ -120,6 +151,7 @@ void hideSlot(Slot &s) {
   setShown(s.img, s.img_shown, false);
   setShown(s.label, s.label_shown, false);
   setShown(s.leader, s.leader_shown, false);
+  setShown(s.logo, s.logo_shown, false);
 }
 
 uint32_t colourFor(const Aircraft &a, const SpriteMotion &m, bool selected) {
@@ -152,7 +184,12 @@ bool ensureSlot(Slot &s) {
   s.leader = lv_line_create(g_leaders);
   s.img = lv_img_create(g_sprites);
   s.label = lv_label_create(g_labels);
-  if (!s.leader || !s.img || !s.label) return false;
+  s.logo = lv_img_create(g_labels);
+  if (!s.leader || !s.img || !s.label || !s.logo) return false;
+  lv_obj_clear_flag(s.logo, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(s.logo, LV_OBJ_FLAG_HIDDEN);
+  s.logo_idx = s.logo_src = -1;
+  s.gx = s.gy = NO_POS;
 
   lv_obj_remove_style_all(s.leader);
   lv_obj_add_style(s.leader, &g_style_leader, 0);
@@ -182,7 +219,7 @@ bool ensureSlot(Slot &s) {
   lv_obj_add_flag(s.label, LV_OBJ_FLAG_HIDDEN);
   s.text[0] = '\0';
 
-  s.img_shown = s.label_shown = s.leader_shown = false;
+  s.img_shown = s.label_shown = s.leader_shown = s.logo_shown = false;
   s.created = true;
   ++g_created;
   if (g_raised_slot >= 0) lv_obj_move_foreground(g_slots[g_raised_slot].img);   // new sprites append on top
@@ -297,8 +334,23 @@ void aircraftLayerTick(uint32_t now_ms) {
         strncpy(s.text, text, sizeof(s.text) - 1);
         s.text[sizeof(s.text) - 1] = '\0';
         lv_label_set_text(s.label, s.text);
+        s.logo_idx = airlineLogoIndex(a.last.callsign);
       }
-      const lv_coord_t lx = px + 14, ly = py - 6;
+      const lv_img_dsc_t *logo = logoDsc(s.logo_idx);
+      if (logo) {
+        if (s.logo_src != s.logo_idx) {
+          lv_img_set_src(s.logo, logo);
+          s.logo_src = s.logo_idx;
+        }
+        const lv_coord_t gx = px + 13, gy = py - AIRLINE_LOGO_H / 2;
+        if (gx != s.gx || gy != s.gy) {
+          lv_obj_set_pos(s.logo, gx, gy);
+          s.gx = gx;
+          s.gy = gy;
+        }
+      }
+      setShown(s.logo, s.logo_shown, logo != nullptr);
+      const lv_coord_t lx = px + (logo ? 13 + AIRLINE_LOGO_W + 3 : 14), ly = py - 6;
       if (lx != s.lx || ly != s.ly) {
         lv_obj_set_pos(s.label, lx, ly);
         s.lx = lx;
@@ -307,6 +359,7 @@ void aircraftLayerTick(uint32_t now_ms) {
       setShown(s.label, s.label_shown, true);
     } else {
       setShown(s.label, s.label_shown, false);
+      setShown(s.logo, s.logo_shown, false);
     }
 
     if (selected) {
