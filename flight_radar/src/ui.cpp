@@ -100,6 +100,8 @@ bool g_have_click = false;
 
 // Selection: `i` indexes st.snap, -1 clears. Logs one line and redraws trails.
 void setSelection(int i) {
+  char prev[sizeof(st.selected_icao24)];
+  memcpy(prev, st.selected_icao24, sizeof(prev));
   if (i >= 0 && (size_t)i < st.snap_n) {
     strncpy(st.selected_icao24, st.snap[i].last.icao24, sizeof(st.selected_icao24) - 1);
     st.selected_icao24[sizeof(st.selected_icao24) - 1] = '\0';
@@ -109,7 +111,12 @@ void setSelection(int i) {
     st.card_open = false;
   }
   Serial.printf("[sel] %s\n", st.selected_icao24[0] ? st.selected_icao24 : "none");
-  radarViewInvalidate(g_rv);
+  // Only the old and new selected trails change colour: repaint just those boxes,
+  // not the whole scope (a full redraw takes ~130 ms and made every tap stutter).
+  if (strcmp(prev, st.selected_icao24) != 0) {
+    radarViewInvalidateTrail(g_rv, prev);
+    radarViewInvalidateTrail(g_rv, st.selected_icao24);
+  }
   detailCardRefresh(g_card);   // an open card follows the selection
 }
 

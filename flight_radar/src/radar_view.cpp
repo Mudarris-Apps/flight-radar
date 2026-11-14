@@ -312,6 +312,24 @@ void radarViewInvalidate(lv_obj_t *rv) {
   if (rv) lv_obj_invalidate(rv);
 }
 
+void radarViewInvalidateTrail(lv_obj_t *rv, const char *icao24) {
+  if (!rv || !icao24 || !icao24[0]) return;
+  const UiState *st = static_cast<const UiState *>(lv_obj_get_user_data(rv));
+  if (!st || !st->snap) return;
+  if (!g_cache || !g_cache->valid) {   // no projected boxes yet: fall back to a full redraw
+    lv_obj_invalidate(rv);
+    return;
+  }
+  size_t count = st->snap_n < MAX_AIRCRAFT ? st->snap_n : MAX_AIRCRAFT;
+  for (size_t i = 0; i < count; ++i) {
+    if (strncmp(st->snap[i].last.icao24, icao24, 7) != 0) continue;
+    if (g_cache->n[i] < 2) return;   // no trail drawn, so nothing to repaint on the scope
+    lv_area_t a = g_cache->box[i];   // already padded for the 3 px selected line width
+    lv_obj_invalidate_area(rv, &a);
+    return;
+  }
+}
+
 geo::Projection radarViewProjection(lv_obj_t *rv) {
   const UiState *st = static_cast<const UiState *>(lv_obj_get_user_data(rv));
   return makeProjection(rv, st);
