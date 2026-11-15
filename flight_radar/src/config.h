@@ -25,3 +25,4 @@
 #define DRAG_THRESHOLD_PX       10    // px of finger travel before a touch becomes a pan (LVGL scroll limit)
 #define DISPLAY_ROTATION_DEG    180   // 0 or 180. 180 = flex cable exits to the right; LVGL sw rotation (SH8601 has no mirror-Y/swap-XY)
 #define RADAR_DIAG              0     // serial timing diagnostics for the UI tick
+#define OVERHEAD_RADIUS_M       4000.0f  // default overhead-mode range (changeable in settings: 2/4/8/15/30 km)

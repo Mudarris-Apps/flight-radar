@@ -166,11 +166,26 @@ otherwise fire a phantom press).
 
 **Knob (long press, about 1.5 s):**
 - With an aircraft selected: toggles the detail card for that aircraft.
-- With nothing selected: opens the trail-length settings screen. While it is
-  open, rotate moves the highlight between 5, 10, 20 and 30 minutes; a short
-  press saves the highlighted value to flash (NVS) and closes the screen; a
-  long press cancels without saving. While the settings screen is open, touch
-  is ignored (it is knob-only).
+- With nothing selected: opens **Settings**. Rotate moves the highlight, a
+  short press acts on the row, a long press closes the menu. Touch is ignored
+  while it is open (it is knob-only). Rows:
+  - **Trail length:** each press cycles 5, 10, 20 and 30 minutes and saves to
+    flash (NVS) at once.
+  - **Wi-Fi:** opens the Wi-Fi screen.
+  - **Overhead range:** each press cycles 2, 4, 8, 15 and 30 km (saved to NVS).
+  - **Overhead mode:** see below.
+
+**Overhead mode:** a black screen showing only the nearest airborne aircraft
+within the overhead range of home, as a yellow, softly glowing plane in its
+real position (home is the centre, the screen's edge is the range away) and
+pointing along its track, with a flight card beside it: callsign, airline,
+type and registration, altitude and speed, distance from home. With nothing
+in range it shows only a dim "Watching for planes" line. A long press returns
+to the radar; touch and the other knob actions are ignored.
+
+**Wi-Fi at boot:** when a saved network is in range the Wi-Fi screen offers
+"Connect to <name>" with a 10 s countdown; left untouched it connects by
+itself, and any knob input cancels the countdown.
 
 **Touch:** tapping a plane selects it; tapping empty scope clears the
 selection. Dragging pans the view (trails are hidden while dragging so the

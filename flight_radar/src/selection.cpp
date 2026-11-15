@@ -33,3 +33,26 @@ int selectNextByDistance(const Aircraft *snap, size_t n, const geo::Home &home, 
   }
   return idx[0];
 }
+
+int nearestAirborneWithin(const Aircraft *snap, const SpriteMotion *motion, size_t n, const geo::Home &home,
+                          float radius_m, float *dist_m) {
+  int best = -1;
+  float best_d = radius_m;
+  for (size_t i = 0; snap && i < n; ++i) {
+    const Aircraft &a = snap[i];
+    if (!a.in_use || a.last.on_ground) continue;
+    float lat = a.last.lat, lon = a.last.lon;
+    if (motion && motion[i].initialised) {
+      lat = motion[i].cur_lat;
+      lon = motion[i].cur_lon;
+    }
+    if (std::isnan(lat) || std::isnan(lon)) continue;
+    float d = geo::distanceM(home, lat, lon);
+    if (d <= best_d) {
+      best_d = d;
+      best = (int)i;
+    }
+  }
+  if (dist_m) *dist_m = best >= 0 ? best_d : -1.f;
+  return best;
+}

@@ -40,4 +40,15 @@ TEST(airline_name_needs_designator_callsign) {
   CHECK(airlineNameForCallsign("") == nullptr);
   CHECK(airlineNameForCallsign("VHABC") == nullptr);
 }
+TEST(airline_display_name_fallbacks) {
+  char b[32];
+  airlineDisplayName("", nullptr, b, sizeof(b));
+  CHECK_STREQ(b, "Private");
+  MetadataRow m = {};
+  std::snprintf(m.op, sizeof(m.op), "royal flying doctor service");
+  airlineDisplayName("VHABC", &m, b, sizeof(b));
+  CHECK_STREQ(b, "Royal Flying Doctor Service");
+  airlineDisplayName("ZZZ999", nullptr, b, sizeof(b));
+  if (!airlineNameForCallsign("ZZZ999")) CHECK_STREQ(b, "Unknown Airline");
+}
 TEST_MAIN()

@@ -11,6 +11,7 @@
 #include "detail_card.h"
 #include "knob_input.h"
 #include "net_task.h"
+#include "overhead_mode.h"
 #include "radar_view.h"
 #include "selection.h"
 #include "settings_screen.h"
@@ -29,6 +30,7 @@ lv_obj_t *g_bar = nullptr;
 lv_obj_t *g_card = nullptr;
 lv_obj_t *g_settings = nullptr;
 lv_obj_t *g_wifi = nullptr;
+lv_obj_t *g_overhead = nullptr;
 char g_prev_icao[MAX_AIRCRAFT][7];   // icao24 last seen in each snapshot slot
 bool g_was_animating = false;
 uint32_t g_last_status_ms = 0;
@@ -216,6 +218,13 @@ void inputTimerCb(lv_timer_t *) {
       wifiScreenHandle(g_wifi, ev);
       continue;
     }
+    if (overheadIsOpen(g_overhead)) {   // overhead mode: only a long press (leave) does anything
+      if (ev == InputEvent::LONG_PRESS) {
+        overheadClose(g_overhead);
+        radarViewInvalidate(g_rv);
+      }
+      continue;
+    }
     if (settingsScreenIsOpen(g_settings)) {   // the modal panel takes every knob event
       settingsScreenHandle(g_settings, ev);
       if (!settingsScreenIsOpen(g_settings)) radarViewInvalidate(g_rv);   // trails redraw at the new length
@@ -290,6 +299,7 @@ void tickTimerCb(lv_timer_t *) {
   }
   if (refreshSnapshot()) dropStaleSelection();
   wifiScreenTick(g_wifi, now);
+  overheadTick(g_overhead, now);
 #if RADAR_DIAG
   uint32_t t0 = micros();
 #endif
@@ -335,6 +345,7 @@ void uiInit(AircraftStore *store) {
   memset(g_prev_icao, 0, sizeof(g_prev_icao));
   st.home = netHome(&g_home_gen);
   st.trail_window_s = settingsLoadTrailWindow();
+  st.overhead_radius_m = (float)settingsLoadOverheadRange();
 
   lv_obj_t *scr = lv_scr_act();
   lv_obj_set_style_bg_color(scr, lv_color_hex(0x05080C), 0);
@@ -351,9 +362,14 @@ void uiInit(AircraftStore *store) {
   aircraftLayerCreate(scr, &st, g_rv);   // sprites above the scope, below the status bar
   g_card = detailCardCreate(scr, &st);   // above the sprites, below the status bar
   g_bar = statusBarCreate(scr);
+  g_overhead = overheadCreate(scr, &st);         // full-screen black view, above the radar
   g_settings = settingsScreenCreate(scr, &st);   // modal, above everything
   g_wifi = wifiScreenCreate(scr);                // full screen, above the settings panel
   settingsScreenSetWifiCallback([] { wifiScreenOpen(g_wifi); });
+  settingsScreenSetOverheadCallback([] {
+    setSelection(-1);   // also closes the detail card
+    overheadOpen(g_overhead);
+  });
 
 #if RADAR_DIAG
   lv_disp_t *disp = lv_disp_get_default();

@@ -21,21 +21,59 @@ import csv
 import io
 import itertools
 import os
+import re
+import unicodedata
 import sys
 import urllib.request
 
 REG_WIDTH = 7       # 7 bytes in the packed row, NUL padded
 TYPE_WIDTH = 4      # char[5]
 MODEL_WIDTH = 23    # char[24]
-OP_WIDTH = 23       # char[24]
+OP_WIDTH = 31       # char[32]
+AIRLINE_WIDTH = 31  # char[32]
 ROW_BYTES = 14
 LINE_BYTES = 64     # bytes per string-literal line in the output
 
 
 def clean_ascii(value, width):
-    """Strip whitespace, replace non-ASCII with '?', truncate to width."""
-    value = ''.join(ch if ord(ch) < 128 else '?' for ch in value.strip())
-    return value[:width]
+    """Strip whitespace, fold accents to plain ASCII (Aerovias, not Aerov?as),
+    drop anything else non-ASCII, truncate to width."""
+    value = unicodedata.normalize('NFKD', value.strip())
+    value = ''.join(ch for ch in value if 32 <= ord(ch) < 127)
+    return value[:width].strip()
+
+
+# Exact spellings for names the database gets slightly wrong.
+AIRLINE_OVERRIDES = {
+    'QLK': 'QantasLink', 'QFA': 'Qantas', 'JST': 'Jetstar', 'VOZ': 'Virgin Australia',
+    'UAE': 'Emirates', 'RXA': 'Rex Airlines', 'NWK': 'Network Aviation',
+    'UTY': 'Alliance Airlines', 'ANZ': 'Air New Zealand', 'FDX': 'FedEx',
+}
+LEGAL_SUFFIX = re.compile(
+    r'[\s,]+(pty\.?|ltd\.?|limited|inc\.?|llc|corp\.?|corporation|co\.?|gmbh|ag|s\.?a\.?|'
+    r's\.?r\.?o\.?|s\.?p\.?a\.?|a/s|ab|as|oy|bv|b\.v\.|nv|plc|kg|sarl|srl|s\.?l\.?)$', re.I)
+
+
+def tidy_name(value, width):
+    """Readable operator/airline name that fits `width` without a mid-word cut:
+    'Qantaslink (eastern Australia)' -> 'Qantaslink',
+    'Avianca - Aerovias Del Continente Americano S.a.' -> 'Avianca'."""
+    v = clean_ascii(value, 200)
+    v = re.sub(r'\s*\(.*?\)\s*', ' ', v)        # bracketed notes
+    v = re.split(r'\s+-\s+', v)[0]               # 'Name - more detail'
+    v = re.sub(r'\s+', ' ', v).strip(' ,.-')
+    for _ in range(3):                              # 'Air Nippon Network Co. Ltd.'
+        stripped = LEGAL_SUFFIX.sub('', v).strip(' ,.-')
+        if stripped == v or not stripped:
+            break
+        v = stripped
+    if v.isupper() and len(v) > 4:
+        v = v.title()
+    if len(v) > width:
+        cut = v[:width + 1].rsplit(' ', 1)[0]
+        v = cut if cut else v[:width]
+        v = re.sub(r'(\s+(of|and|the|de|du|del|for|&))+$', '', v, flags=re.I)   # no dangling 'Department Of'
+    return v.strip(' ,.-')
 
 
 def c_str(value):
@@ -86,7 +124,7 @@ def main():
         for row in reader:
             if len(row) <= width:
                 continue
-            op = clean_ascii(row[i_op], OP_WIDTH)
+            op = tidy_name(row[i_op], OP_WIDTH)
             code = row[i_opicao].strip().upper()
             if op and len(code) == 3 and code.isalpha():
                 airline_names[code][op] += 1
@@ -121,7 +159,10 @@ def main():
         packed += bytes((t & 0xFF, t >> 8, o & 0xFF, o >> 8))
     assert len(packed) == len(rows) * ROW_BYTES
 
-    airlines = sorted((code, names.most_common(1)[0][0]) for code, names in airline_names.items())
+    airlines = sorted((code, AIRLINE_OVERRIDES.get(code) or tidy_name(names.most_common(1)[0][0], AIRLINE_WIDTH))
+                      for code, names in airline_names.items())
+    airlines += [(c, n) for c, n in AIRLINE_OVERRIDES.items() if c not in airline_names]
+    airlines.sort()
 
     out_path = os.path.normpath(os.path.join(
         os.path.dirname(os.path.abspath(__file__)), '..', 'flight_radar', 'src', 'metadata_table.cpp'))
@@ -138,10 +179,10 @@ def main():
         out.write('const char METADATA_TYPES[][5] = {\n' + ',\n'.join('  ' + c_str(t) for t, _ in pairs) + '\n};\n')
         out.write('const char METADATA_MODELS[][24] = {\n' + ',\n'.join('  ' + c_str(m) for _, m in pairs) + '\n};\n\n')
         out.write(f'const size_t METADATA_OP_COUNT = {len(ops)};\n')
-        out.write('const char METADATA_OPS[][24] = {\n' + ',\n'.join('  ' + c_str(o) for o in ops) + '\n};\n\n')
+        out.write('const char METADATA_OPS[][32] = {\n' + ',\n'.join('  ' + c_str(o) for o in ops) + '\n};\n\n')
         out.write(f'const size_t AIRLINE_COUNT = {len(airlines)};\n')
         out.write('const char AIRLINE_CODES[][4] = {\n' + ',\n'.join('  ' + c_str(c) for c, _ in airlines) + '\n};\n')
-        out.write('const char AIRLINE_NAMES[][24] = {\n' + ',\n'.join('  ' + c_str(n) for _, n in airlines) + '\n};\n')
+        out.write('const char AIRLINE_NAMES[][32] = {\n' + ',\n'.join('  ' + c_str(n) for _, n in airlines) + '\n};\n')
 
     print(f"wrote {len(rows)} aircraft ({len(packed) / 1e6:.1f} MB packed), {len(pairs)} type/model pairs, "
           f"{len(ops)} operators, {len(airlines)} airlines to {out_path}")

@@ -12,6 +12,7 @@
 //
 // Sized and placed so every line stays inside the round glass.
 #include "detail_card.h"
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -206,9 +207,16 @@ void detailCardRefresh(lv_obj_t *card) {
   setTextIfChanged(c->chip_text, type[0] ? type : "");
   setHidden(c->chip, !type[0]);
 
-  const char *airline = airlineNameForCallsign(r.callsign);
-  if (!airline && m && m->op[0]) airline = m->op;
-  setTextIfChanged(c->airline, airline ? airline : (r.callsign[0] ? "Unknown airline" : "Private"));
+  char airline_text[32];
+  airlineDisplayName(r.callsign, m, airline_text, sizeof(airline_text));
+  // Long names (up to 31 chars) step down a font size to fit without "...".
+  size_t alen = strlen(airline_text);
+  const lv_font_t *airline_font = alen > 28 ? &lv_font_montserrat_12
+                                : alen > 24 ? &lv_font_montserrat_14
+                                            : &lv_font_montserrat_16;
+  if (lv_obj_get_style_text_font(c->airline, 0) != airline_font)
+    lv_obj_set_style_text_font(c->airline, airline_font, 0);
+  setTextIfChanged(c->airline, airline_text);
 
   if (m && (m->model[0] || m->reg[0]))
     snprintf(buf, sizeof(buf), "%s%s%s", m->model, (m->model[0] && m->reg[0]) ? "  " LV_SYMBOL_BULLET "  " : "", m->reg);

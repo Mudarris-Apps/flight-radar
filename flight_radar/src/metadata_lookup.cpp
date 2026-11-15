@@ -1,6 +1,8 @@
 // metadata_lookup.cpp: lookups over the generated metadata tables (kept apart from
 // the generated data in metadata_table.cpp).
 #include "metadata_table.h"
+#include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include "airline_logos.h"
@@ -61,4 +63,17 @@ const char *airlineNameForCallsign(const char *callsign) {
     else hi = mid;
   }
   return nullptr;
+}
+
+void airlineDisplayName(const char *callsign, const MetadataRow *meta, char *out, size_t n) {
+  if (!out || n == 0) return;
+  const char *name = airlineNameForCallsign(callsign);
+  if (!name && meta && meta->op[0]) name = meta->op;
+  if (!name) name = (callsign && callsign[0]) ? "Unknown airline" : "Private";
+  snprintf(out, n, "%s", name);
+  bool word_start = true;
+  for (char *p = out; *p; ++p) {
+    if (word_start && isalpha((unsigned char)*p)) *p = (char)toupper((unsigned char)*p);
+    word_start = (*p == ' ' || *p == '-' || *p == '/');
+  }
 }

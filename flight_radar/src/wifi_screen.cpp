@@ -1,5 +1,6 @@
 // wifi_screen.cpp: Wi-Fi setup screen, shown at every boot. Four pages share one full-screen panel:
-//   OFFER "Connect to <saved network>" when one is in range, or "Other networks"
+//   OFFER "Connect to <saved network>" when one is in range, or "Other networks";
+//         left untouched for 10 s it connects by itself (with a countdown)
 //   LIST  scanned networks, then "Other network", "Scan again", "Close"
 //   KEYS  a text box and a 4-row keyboard (letters / CAPS / two symbol pages)
 //   MSG   "Connecting...", "Connected", or why a join failed
@@ -22,6 +23,7 @@ enum Mode { LOWER, UPPER, SYM1, SYM2, N_MODES };
 const int MAX_ROWS = WIFI_SCAN_MAX + 3;
 const int MAX_KEYS = 48;
 const uint32_t POLL_MS = 300;
+const uint32_t OFFER_AUTO_MS = 10000;   // an untouched "Connect to <saved network>" offer joins after this
 
 const uint32_t COL_BG = 0x05080C, COL_PANEL = 0x0C1218, COL_KEY = 0x17222C, COL_TEXT = 0xE0E8F0,
                COL_DIM = 0x7F8C98, COL_ACCENT = 0x2F8F5A, COL_TITLE = 0x5FBF85;
@@ -54,6 +56,8 @@ struct Wifi {
   lv_obj_t *offer = nullptr, *offer_label = nullptr, *offer_btn[2] = {};
   int offer_hl = 0;            // 0 = Connect, 1 = Other networks
   bool offer_pending = false;  // just opened: offer a saved network once the scan finds one
+  uint32_t offer_auto_at = 0;  // millis() at which an untouched offer connects by itself (0 = off)
+  int offer_shown_s = -1;      // countdown second last drawn on the Connect button
   char offer_ssid[33] = "";
   lv_obj_t *rows[MAX_ROWS] = {};
   RowKind kind[MAX_ROWS] = {};
@@ -203,13 +207,32 @@ void showOffer(const char *ssid) {
   lv_label_set_text_fmt(lv_obj_get_child(g.offer_btn[0], 0), LV_SYMBOL_WIFI "  Connect to %s", g.offer_ssid);
   g.offer_hl = 0;
   g.offer_pending = false;
+  g.offer_auto_at = millis() + OFFER_AUTO_MS;   // left alone, it connects by itself
+  g.offer_shown_s = -1;
   paintOffer();
   showPage(Page::OFFER);
+}
+
+// Draws "Connect to <name>  (7)" while the auto-connect countdown runs.
+void paintOfferCountdown(uint32_t now) {
+  int secs = g.offer_auto_at ? (int)((g.offer_auto_at - now + 999) / 1000) : 0;
+  if (secs == g.offer_shown_s) return;
+  g.offer_shown_s = secs;
+  lv_obj_t *l = lv_obj_get_child(g.offer_btn[0], 0);
+  if (secs > 0) lv_label_set_text_fmt(l, LV_SYMBOL_WIFI "  Connect to %s  (%d)", g.offer_ssid, secs);
+  else lv_label_set_text_fmt(l, LV_SYMBOL_WIFI "  Connect to %s", g.offer_ssid);
+}
+
+void cancelOfferCountdown() {
+  if (!g.offer_auto_at) return;
+  g.offer_auto_at = 0;
+  paintOfferCountdown(millis());
 }
 
 void joinSaved(const char *ssid);
 
 void offerChoose(int i) {
+  cancelOfferCountdown();
   if (i == 0) joinSaved(g.offer_ssid);
   else showPage(Page::LIST);
 }
@@ -564,6 +587,7 @@ void wifiScreenHandle(lv_obj_t *w, InputEvent e) {
   bool right = e == InputEvent::ROTATE_RIGHT, left = e == InputEvent::ROTATE_LEFT;
   switch (g.page) {
     case Page::OFFER:
+      cancelOfferCountdown();   // any knob input means the user is choosing
       if (right || left) { g.offer_hl ^= 1; paintOffer(); }
       else if (e == InputEvent::PRESS) offerChoose(g.offer_hl);
       else if (e == InputEvent::LONG_PRESS) back();
@@ -660,6 +684,17 @@ void wifiScreenTick(lv_obj_t *w, uint32_t now) {
     case Page::OFFER:
       netWifiConnectedSsid(g.connected, sizeof(g.connected));
       updateSubtitle();
+      if (g.offer_auto_at) {
+        if ((int32_t)(now - g.offer_auto_at) >= 0) {
+          Serial.printf("[wifi] offer untouched for %us: connecting to \"%s\"\n", (unsigned)(OFFER_AUTO_MS / 1000),
+                        g.offer_ssid);
+          g.offer_hl = 0;
+          paintOffer();
+          offerChoose(0);
+        } else {
+          paintOfferCountdown(now);
+        }
+      }
       break;
     case Page::KEYS:
       break;

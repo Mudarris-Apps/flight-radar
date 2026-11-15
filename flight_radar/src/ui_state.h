@@ -9,6 +9,7 @@ struct UiState {
   float pan_x_m = 0, pan_y_m = 0;
   char selected_icao24[7] = {0};
   uint32_t trail_window_s = TRAIL_WINDOW_DEFAULT_S;
+  float overhead_radius_m = OVERHEAD_RADIUS_M;   // overhead mode range, set in settings
   Aircraft *snap = nullptr;          // PSRAM array MAX_AIRCRAFT
   SpriteMotion *motion = nullptr;    // parallel to snap
   size_t snap_n = 0;

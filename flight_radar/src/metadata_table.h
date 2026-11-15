@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-struct MetadataRow { uint32_t icao24; char reg[8]; char typecode[5]; char model[24]; char op[24]; };
+struct MetadataRow { uint32_t icao24; char reg[8]; char typecode[5]; char model[24]; char op[32]; };
 
 // Fills `out` and returns true when the aircraft is in the table.
 bool metadataLookup(const char *icao24_hex, MetadataRow &out);
@@ -16,6 +16,10 @@ bool metadataLookup(const char *icao24_hex, MetadataRow &out);
 uint32_t metadataIcaoAt(size_t i);
 // Airline name for a callsign such as "ANZ123" (Air New Zealand), or nullptr.
 const char *airlineNameForCallsign(const char *callsign);
+// Name to show for a flight: the callsign's airline, else the aircraft's operator,
+// else "Unknown airline" (or "Private" with no callsign). Each word starts with a
+// capital ("Qantas Airways"); the rest is kept, so "QantasLink" stays.
+void airlineDisplayName(const char *callsign, const MetadataRow *meta, char *out, size_t n);
 
 // ---- Generated data (metadata_table.cpp) ----
 // Packed rows, METADATA_ROW_BYTES each, sorted by ICAO24:
@@ -29,8 +33,8 @@ extern const size_t METADATA_TYPE_COUNT;
 extern const char METADATA_TYPES[][5];
 extern const char METADATA_MODELS[][24];
 extern const size_t METADATA_OP_COUNT;
-extern const char METADATA_OPS[][24];
+extern const char METADATA_OPS[][32];
 // Airline designators (sorted) and names.
 extern const size_t AIRLINE_COUNT;
 extern const char AIRLINE_CODES[][4];
-extern const char AIRLINE_NAMES[][24];
+extern const char AIRLINE_NAMES[][32];

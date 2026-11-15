@@ -93,4 +93,24 @@ TEST(full_cycle_over_max_aircraft) {
   }
   CHECK(visited == MAX_AIRCRAFT);
 }
+TEST(overhead_picks_nearest_airborne_within_radius) {
+  Aircraft s[3];
+  fill(s);                       // 50 km, 5 km, 20 km
+  place(s[2], "ccc003", 3);      // now 3 km
+  float d = 0;
+  CHECK(nearestAirborneWithin(s, nullptr, 3, H, 4000.f, &d) == 2);
+  CHECK_NEAR(d, 3000.0, 5.0);
+  s[2].last.on_ground = true;    // on the ground does not count
+  CHECK(nearestAirborneWithin(s, nullptr, 3, H, 4000.f, &d) == -1);
+  CHECK(d < 0);
+}
+TEST(overhead_uses_display_position_when_known) {
+  Aircraft s[1];
+  place(s[0], "aaa050", 50);
+  SpriteMotion m[1] = {};
+  m[0].initialised = true;
+  m[0].cur_lat = H.lat;          // drawn right over home
+  m[0].cur_lon = H.lon;
+  CHECK(nearestAirborneWithin(s, m, 1, H, 4000.f) == 0);
+}
 TEST_MAIN()
