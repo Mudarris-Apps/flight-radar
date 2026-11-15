@@ -18,7 +18,7 @@ struct AircraftReport {
 
 struct TrailPoint { float lat, lon; uint32_t t; };
 
-struct MetadataRow;  // defined in metadata_table.h
+#include "metadata_table.h"
 
 struct Aircraft {
   AircraftReport last;
@@ -29,5 +29,6 @@ struct Aircraft {
   uint16_t trail_len;
   bool stale;
   bool in_use;
-  const MetadataRow *meta;
+  MetadataRow meta;         // valid when has_meta
+  bool has_meta;
 };

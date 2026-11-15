@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include "freertos/FreeRTOS.h"
@@ -11,6 +12,8 @@
 #include "config.h"
 #include "epoch.h"
 #include "geo.h"
+#include "gts_roots.h"
+#include "isrg_root_x1.h"
 #include "opensky_client.h"
 #include "opensky_parser.h"
 #include "wifi_store.h"
@@ -42,12 +45,14 @@ char g_connected_ssid[33] = "";
 // successful join, a dropped connection reconnects to known networks by itself.
 bool g_auto_reconnect = false;
 
-// Radar centre: secrets.h HOME_LAT/HOME_LON on the home network, else located from
-// the network's public IP on every join (a phone hotspot moves with you).
+// Radar centre: secrets.h HOME_LAT/HOME_LON on the home network, else located on
+// every join (a phone hotspot moves with you): from nearby Wi-Fi access points
+// when possible, falling back to the network's public IP.
 geo::Home g_home = geo::makeHome(HOME_LAT, HOME_LON);
 uint32_t g_home_gen = 0;
 char g_place[40] = "home";
 char g_query[128] = "";
+const uint32_t NET_QUICK_RETRY_S = 5;
 
 bool commandPending() {
   xSemaphoreTake(g_mutex, portMAX_DELAY);
@@ -224,20 +229,111 @@ bool ipLocate(float &lat, float &lon, char *place, size_t place_n) {
   return ok;
 }
 
+// Sends a Google-style geolocation request (Google and BeaconDB share the format).
+bool postGeolocate(const char *tag, const String &url, const char *ca_pem, const String &body,
+                   float &lat, float &lon, float &acc_m) {
+  WiFiClientSecure client;
+#if OPENSKY_TLS_INSECURE
+  (void)ca_pem;
+  client.setInsecure();
+#else
+  client.setCACert(ca_pem);
+#endif
+  HTTPClient http;
+  http.setTimeout(8000);
+  if (!http.begin(client, url)) return false;
+  http.setUserAgent("flight-radar/1.0");
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST(body);
+  bool ok = false;
+  if (code == 200) {
+    JsonDocument doc;
+    if (!deserializeJson(doc, http.getString()) && !doc["location"]["lat"].isNull()) {
+      lat = doc["location"]["lat"].as<float>();
+      lon = doc["location"]["lng"].as<float>();
+      acc_m = doc["accuracy"] | 0.f;
+      ok = lat >= -90.f && lat <= 90.f && lon >= -180.f && lon <= 180.f && !(lat == 0.f && lon == 0.f) &&
+           acc_m < 25000.f;   // a fix this vague is no better than the IP fallback
+    }
+  }
+  http.end();
+  Serial.printf("[net] wifi locate (%s): http=%d %s acc=%.0fm\n", tag, code, ok ? "ok" : "failed", ok ? acc_m : 0.f);
+  return ok;
+}
+
+// Position from the Wi-Fi access points in range: Google's geolocation API when
+// secrets.h has GOOGLE_GEOLOCATION_KEY (best worldwide coverage), then BeaconDB
+// (public, keyless, patchier coverage). Usually tens of metres, where IP
+// geolocation can be hundreds of km out.
+// Sets `home_rssi` (else stays 0) when the secrets.h home network is in range: then
+// we are near home and the caller uses HOME_LAT/HOME_LON without any lookup.
+bool wifiLocate(float &lat, float &lon, float &acc_m, int &home_rssi) {
+  int16_t n = WiFi.scanNetworks(false, true);   // hidden networks still have usable BSSIDs
+  Serial.printf("[net] wifi locate: scan found %d access points\n", n);
+  for (int i = 0; i < n; ++i)
+    if (isHomeNetwork(WiFi.SSID(i).c_str()) && (home_rssi == 0 || WiFi.RSSI(i) > home_rssi)) home_rssi = WiFi.RSSI(i);
+  if (home_rssi != 0) {
+    WiFi.scanDelete();
+    delay(1500);   // let the link settle after the scan took the radio off-channel
+    return false;
+  }
+  String own = WiFi.BSSIDstr();
+  JsonDocument req;
+  req["considerIp"] = false;
+  JsonArray aps = req["wifiAccessPoints"].to<JsonArray>();
+  int used = 0;
+  for (int i = 0; i < n && used < 20; ++i) {
+    if (WiFi.SSID(i).endsWith("_nomap")) continue;   // owner opted out of location databases
+    String bssid = WiFi.BSSIDstr(i);
+    if (bssid == own) continue;                      // may be a phone hotspot that moves with us
+    JsonObject ap = aps.add<JsonObject>();
+    ap["macAddress"] = bssid;
+    ap["signalStrength"] = WiFi.RSSI(i);
+    ap["channel"] = WiFi.channel(i);
+    ++used;
+  }
+  WiFi.scanDelete();
+  delay(1500);   // let the link settle after the scan took the radio off-channel
+  if (used < 2) {   // both services need at least two access points
+    Serial.printf("[net] wifi locate: only %d usable access points\n", used);
+    return false;
+  }
+  String body;
+  serializeJson(req, body);
+
+#ifdef GOOGLE_GEOLOCATION_KEY
+  if (sizeof(GOOGLE_GEOLOCATION_KEY) > 1 &&
+      postGeolocate("google", String("https://www.googleapis.com/geolocation/v1/geolocate?key=") + GOOGLE_GEOLOCATION_KEY,
+                    GTS_ROOTS_PEM, body, lat, lon, acc_m))
+    return true;
+#endif
+  return postGeolocate("beacondb", "https://api.beacondb.net/v1/geolocate", ISRG_ROOT_X1_PEM, body, lat, lon, acc_m);
+}
+
 // Re-centres the radar for the network just joined. Keeps the old centre if the lookup fails.
 void relocate(const char *ssid) {
-  float lat, lon;
+  float lat, lon, acc_m;
+  int home_rssi = 0;
   char place[40];
   if (isHomeNetwork(ssid)) {
     lat = HOME_LAT;
     lon = HOME_LON;
     strncpy(place, "home", sizeof(place));
+  } else if (wifiLocate(lat, lon, acc_m, home_rssi)) {
+    snprintf(place, sizeof(place), "Wi-Fi fix ~%.0f m", acc_m);
+  } else if (home_rssi != 0) {   // home network in range: we are next door to it
+    lat = HOME_LAT;
+    lon = HOME_LON;
+    strncpy(place, "near home", sizeof(place));
+    Serial.printf("[net] home network in range (rssi=%d): using home location\n", home_rssi);
   } else if (!ipLocate(lat, lon, place, sizeof(place))) {
     return;
+  } else {
+    strncat(place, " (approx.)", sizeof(place) - strlen(place) - 1);
   }
   geo::Home h = geo::makeHome(lat, lon);
   xSemaphoreTake(g_mutex, portMAX_DELAY);
-  bool moved = geo::distanceM(g_home, lat, lon) > 1000.f;   // ignore tiny wobble between lookups
+  bool moved = geo::distanceM(g_home, lat, lon) > 300.f;   // ignore tiny wobble between lookups
   strncpy(g_place, place, sizeof(g_place) - 1);
   g_place[sizeof(g_place) - 1] = '\0';
   if (moved) {
@@ -338,12 +434,18 @@ void netTask(void *) {
   for (;;) {
     if (handleCommands()) continue;
     if (WiFi.status() != WL_CONNECTED) {
+      client.dropConnection();   // the kept-alive TLS socket died with the old link
       if (g_auto_reconnect) connectKnown();
       else waitForUser();
       continue;
     }
 
     if (!client.ensureToken()) {
+      if (client.lastTokenCode() < 0) {   // never reached OpenSky: a network problem, not the login
+        Serial.printf("[net] token: no connection, retry in %us\n", (unsigned)(NET_QUICK_RETRY_S * 2));
+        sleepSeconds(NET_QUICK_RETRY_S * 2);
+        continue;
+      }
       setState(NetState::AUTH_FAILED);
       Serial.printf("[net] auth failed, retry in %us heap=%u psram=%u\n", (unsigned)POLL_ERROR_RETRY_S,
                     freeHeap(), freePsram());
@@ -374,7 +476,7 @@ void netTask(void *) {
         wait = (rate >= 0 && rate < RATE_REMAINING_FLOOR) ? POLL_BACKOFF_S : POLL_INTERVAL_S;
       } else {
         Serial.printf("[net] states: malformed JSON (%u bytes)\n", (unsigned)len);
-        setState(NetState::HTTP_ERROR);
+        wait = NET_QUICK_RETRY_S * 2;   // usually a truncated download: retry quietly
       }
     } else if (code == 401) {
       client.invalidateToken();
@@ -382,6 +484,10 @@ void netTask(void *) {
     } else if (code == 429) {
       setState(NetState::RATE_LIMITED);
       wait = POLL_BACKOFF_S;
+    } else if (code < 0 || code >= 500) {
+      // Dropped connection, timeout or OpenSky server trouble: no message, keep
+      // the planes moving by dead reckoning and quietly try again soon.
+      wait = NET_QUICK_RETRY_S * 2;
     } else {
       setState(NetState::HTTP_ERROR);
     }

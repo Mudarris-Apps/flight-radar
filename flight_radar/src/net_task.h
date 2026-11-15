@@ -37,4 +37,4 @@ void     netWifiConnectedSsid(char *out, size_t n);   // "" when not connected
 
 // Radar centre for the current network; `gen` changes whenever it moves.
 geo::Home netHome(uint32_t *gen);
-void      netPlace(char *out, size_t n);   // "home", or the city the network's IP locates to
+void      netPlace(char *out, size_t n);   // "home", a Wi-Fi fix with its accuracy, or the IP-located city

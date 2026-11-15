@@ -112,7 +112,7 @@ void AircraftStore::applyPoll(const AircraftReport *reports, size_t n, uint32_t 
       ac.last_seen_poll = poll_time;
       ac.stale = false;
       ac.in_use = true;
-      ac.meta = metadataLookup(r.icao24);
+      ac.has_meta = metadataLookup(r.icao24, ac.meta);
       maybeAppendTrail(ac, r.lat, r.lon, r.time_position);
       touched[free_idx] = true;
     }

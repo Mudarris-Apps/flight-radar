@@ -1,6 +1,7 @@
 #include "opensky_client.h"
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
 #include "config.h"
@@ -107,27 +108,40 @@ bool OpenSkyClient::ensureToken() {
   if (token_.length() > 0 && (int32_t)(token_expiry_ms_ - millis()) > 0) return true;
   invalidateToken();
 
-  WiFiClientSecure client;
-  configureTls(client);
-  HTTPClient http;
-  http.setReuse(false);
-  http.setTimeout(HTTP_TIMEOUT_MS);
-  if (!http.begin(client, TOKEN_URL)) {
-    Serial.println("[net] token: http.begin failed");
-    return false;
-  }
-  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
   String form = String("grant_type=client_credentials&client_id=") + urlEncode(id_) +
                 "&client_secret=" + urlEncode(secret_);
-  int code = http.POST(form);
+  // Up to 3 tries: on a weak link the TLS handshake itself often fails, which
+  // says nothing about the credentials. last_token_code_ < 0 means "never got
+  // an answer", so the caller can tell that apart from a real rejection.
+  String resp;
+  int code = 0;
+  for (int i = 0; i < 3; ++i) {
+    WiFiClientSecure client;
+    configureTls(client);
+    client.setHandshakeTimeout(20);
+    HTTPClient http;
+    http.setReuse(false);
+    http.setTimeout(HTTP_TIMEOUT_MS);
+    http.setConnectTimeout(HTTP_TIMEOUT_MS);
+    if (!http.begin(client, TOKEN_URL)) {
+      code = HTTPC_ERROR_CONNECTION_REFUSED;
+    } else {
+      http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+      code = http.POST(form);
+      if (code == 200) resp = http.getString();
+      http.end();
+    }
+    if (code >= 0) break;
+    Serial.printf("[net] token: attempt %d http=%d %s rssi=%d\n", i + 1, code,
+                  HTTPClient::errorToString(code).c_str(), (int)WiFi.RSSI());
+    if (WiFi.status() != WL_CONNECTED) break;
+    delay(1500 * (i + 1));
+  }
+  last_token_code_ = code;
   if (code != 200) {
-    Serial.printf("[net] token: http=%d %s\n", code,
-                  code < 0 ? HTTPClient::errorToString(code).c_str() : "");
-    http.end();
+    if (code > 0) Serial.printf("[net] token: http=%d (credentials rejected?)\n", code);
     return false;
   }
-  String resp = http.getString();
-  http.end();
 
   JsonDocument filter;
   filter["access_token"] = true;
@@ -150,16 +164,46 @@ bool OpenSkyClient::ensureToken() {
   return true;
 }
 
+void OpenSkyClient::dropConnection() {
+  states_tls_.stop();
+}
+
+// Up to FETCH_ATTEMPTS tries, dropping the connection between them, so a lost
+// packet or a server-side close of the kept-alive connection costs a second or
+// two instead of a whole poll.
 int OpenSkyClient::fetchStates(const char *bbox_query, char **body, size_t *len, int *rate_remaining) {
+  const int FETCH_ATTEMPTS = 3;
+  int code = 0;
+  for (int i = 0; i < FETCH_ATTEMPTS; ++i) {
+    code = fetchStatesOnce(bbox_query, body, len, rate_remaining);
+    if (code >= 0) return code;
+    char err[96] = "";
+    states_tls_.lastError(err, sizeof(err));
+    Serial.printf("[net] states: attempt %d http=%d %s; tls=\"%s\" rssi=%d largest_block=%u\n", i + 1, code,
+                  HTTPClient::errorToString(code).c_str(), err, (int)WiFi.RSSI(),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    states_tls_.stop();
+    if (WiFi.status() != WL_CONNECTED) break;
+    delay(1500 * (i + 1));
+  }
+  return code;
+}
+
+int OpenSkyClient::fetchStatesOnce(const char *bbox_query, char **body, size_t *len, int *rate_remaining) {
   *body = nullptr;
   *len = 0;
   *rate_remaining = -1;
 
-  WiFiClientSecure client;
-  configureTls(client);
+  if (!states_tls_ready_) {
+    configureTls(states_tls_);
+    states_tls_.setHandshakeTimeout(20);   // seconds; a weak link can be slow
+    states_tls_ready_ = true;
+  }
+  WiFiClientSecure &client = states_tls_;
   HTTPClient http;
-  http.setReuse(false);
+  http.setReuse(true);   // keep-alive: end() leaves the connection open for the next poll
   http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
   String url = String(STATES_URL) + bbox_query + "&extended=1";
   if (!http.begin(client, url)) return HTTPC_ERROR_CONNECTION_REFUSED;
   http.addHeader("Authorization", "Bearer " + token_);

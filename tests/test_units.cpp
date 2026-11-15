@@ -14,22 +14,30 @@ TEST(fmt_value) {
   fmtOrUnknown(b, sizeof(b), 2438.4f, "%.0f ft");
   CHECK_STREQ(b, "2438 ft");
 }
-TEST(metadata_absent_key) { CHECK(metadataLookup("000000") == nullptr); }
+TEST(metadata_absent_key) {
+  MetadataRow m;
+  CHECK(!metadataLookup("000000", m));
+}
 TEST(metadata_unparsable) {
-  CHECK(metadataLookup("zz") == nullptr);
-  CHECK(metadataLookup("") == nullptr);
-  CHECK(metadataLookup(nullptr) == nullptr);
+  MetadataRow m;
+  CHECK(!metadataLookup("zz", m));
+  CHECK(!metadataLookup("", m));
+  CHECK(!metadataLookup(nullptr, m));
 }
 TEST(metadata_first_last_present) {
   if (METADATA_COUNT == 0) return;
   char first[7], last[7];
-  std::snprintf(first, sizeof(first), "%06x", METADATA[0].icao24);
-  std::snprintf(last, sizeof(last), "%06x", METADATA[METADATA_COUNT - 1].icao24);
-  const MetadataRow *r1 = metadataLookup(first);
-  const MetadataRow *r2 = metadataLookup(last);
-  CHECK(r1 != nullptr);
-  CHECK(r2 != nullptr);
-  if (r1) CHECK(r1->reg[0] != '\0');
-  if (r2) CHECK(r2->reg[0] != '\0');
+  std::snprintf(first, sizeof(first), "%06x", (unsigned)metadataIcaoAt(0));
+  std::snprintf(last, sizeof(last), "%06x", (unsigned)metadataIcaoAt(METADATA_COUNT - 1));
+  MetadataRow r1, r2;
+  CHECK(metadataLookup(first, r1));
+  CHECK(metadataLookup(last, r2));
+  CHECK(r1.reg[0] != '\0');
+  CHECK(r2.reg[0] != '\0');
+}
+TEST(airline_name_needs_designator_callsign) {
+  CHECK(airlineNameForCallsign(nullptr) == nullptr);
+  CHECK(airlineNameForCallsign("") == nullptr);
+  CHECK(airlineNameForCallsign("VHABC") == nullptr);
 }
 TEST_MAIN()

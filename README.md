@@ -20,7 +20,7 @@ The code centres on `min(hor_res, ver_res)` rather than assuming a fixed size.
 FQBN used for build/upload:
 
 ```
-esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,USBMode=hwcdc,CDCOnBoot=cdc
+esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=custom,USBMode=hwcdc,CDCOnBoot=cdc
 ```
 
 ## Prerequisites
@@ -50,6 +50,28 @@ cp flight_radar/secrets.example.h flight_radar/secrets.h
 OpenSky client ID and secret come from an OpenSky Network account (API client
 credentials, not the account password); `HOME_LAT`/`HOME_LON` are the centre
 of the 100 km observation radius.
+
+### Location away from home
+
+On the `WIFI_SSID` network the radar centres on `HOME_LAT`/`HOME_LON`. On any
+other network it locates itself on every join, using the first method that
+works:
+
+1. **Home network in range:** if `WIFI_SSID` shows up in a scan (at a
+   neighbour's, say), it uses `HOME_LAT`/`HOME_LON`.
+2. **Wi-Fi positioning:** the nearby access points (not the joined network,
+   which may be a phone hotspot, and not networks ending in `_nomap`) are sent
+   to Google's Geolocation API if `GOOGLE_GEOLOCATION_KEY` is set in
+   `secrets.h`, then to BeaconDB (https://beacondb.net, public and keyless,
+   but with patchy coverage outside Europe). Usually within tens of metres.
+3. **IP location** (ip-api.com): city level at best and sometimes hundreds of
+   km out; the Wi-Fi screen marks it "(approx.)".
+
+To get a Google key: create a Google Cloud project, enable the Geolocation
+API, add billing, and create an API key restricted to that API. This device
+makes one request per Wi-Fi join, well inside Google's free monthly usage.
+Captive-portal Wi-Fi (hotels, airports) never works, since the board cannot
+accept the login page; use a phone hotspot instead.
 
 ## Airline logos (optional)
 
@@ -164,12 +186,13 @@ task's state:
 
 | Text | Meaning |
 | --- | --- |
-| `N aircraft · Ns ago` | Last poll succeeded; `N aircraft` is the current store count, `Ns ago` is time since that poll's reported timestamp. This includes OpenSky's own data delay (their state vectors are typically 15-25 s old when returned), not just time since our last HTTP call. |
+| `N aircraft · updated Ns ago` | Data is coming in; `N` is the number of aircraft currently tracked and `Ns ago` is the time since the board last received data (it resets every successful poll, so normally stays under 25 s). Dropped connections, timeouts and OpenSky server errors (5xx) are retried quietly every 10 s with no message, while the planes keep moving by dead reckoning. |
 | `WIFI CONNECTING` | Wi-Fi association in progress or just failed, retrying. |
+| `LOADING FLIGHTS...` | Wi-Fi is joined; locating, logging in to OpenSky and waiting for the first poll. |
 | `WIFI DOWN` | Three Wi-Fi connection attempts (10 s each) have failed in a row. |
 | `OPENSKY AUTH FAILED` | The OAuth token request failed, or a 401 came back from `/states/all` and the token was discarded; retries every 30 s. |
 | `OPENSKY HTTP 429 · retry N min` | Rate limited; backed off to a 300 s poll interval. |
-| `OPENSKY HTTP <code>` / `OPENSKY ERROR` | Any other non-200 response, or a response whose body failed to parse. |
+| `OPENSKY HTTP <code>` | OpenSky rejected the request with a 4xx other than 401/429. |
 
 ## Polling and the OpenSky credit budget
 
@@ -198,15 +221,16 @@ problem versus something else.
 
 ## Aircraft metadata: why it's an offline table
 
-The detail card shows callsign, ICAO24, squawk, altitude, vertical speed,
-ground speed, track, latitude/longitude, on-ground state and an "updated Ns
-ago" figure, all from OpenSky's live `/states/all` response. Origin,
-destination and airline logo are not available from that endpoint and are
-not shown at all - as of 2026-09-28, OpenSky's live flight-metadata endpoint
+The detail card shows the airline logo, callsign, airline, aircraft type,
+model and registration at the top, then altitude, ground speed, heading, climb
+rate, squawk and an "updated Ns ago" figure in a grid, with the ICAO24 address
+underneath. The live figures come from OpenSky's `/states/all` response. Origin
+and destination are not available from that endpoint and are not shown at all -
+as of 2026-09-28, OpenSky's live flight-metadata endpoint
 returned HTTP 410 (gone) and its routes endpoint returned 404 during
 development, so there is no live source for them.
 
-Registration, type, model and operator come instead from a static table
+Registration, type, model, operator and airline name come instead from static tables
 baked into flash at build time (`flight_radar/src/metadata_table.cpp`),
 looked up by ICAO24 hex address. When an aircraft isn't in the table the
 card shows "Unknown" for those four fields.
@@ -221,13 +245,17 @@ yourself, locally, and it must not be committed:
 python3 tools/gen_metadata_table.py <aircraftDatabase.csv path or URL>
 ```
 
-The generator keeps the Australian ICAO24 address block
-(`0x7C0000`-`0x7FFFFF`) and drops rows with no registration, since the card
-has nothing useful to show for them; during development that gave about
-11,000 rows. Flying somewhere else will show mostly "Unknown" metadata
-unless you change the address block in the generator. CI fails if the
-committed file is anything other than the stub; `CONTRIBUTING.md` explains
-how to keep a local table out of your commits.
+The generator keeps every aircraft worldwide that has a registration (about
+516,000 rows in the November 2026 export), packed into 14 bytes each (about
+7 MB), and builds an airline table from the designator/operator columns (about
+1,500 airlines), so the card names the airline of any flight from its callsign
+(`ANZ123` is Air New Zealand) even when the aircraft row has no operator. The
+table needs the custom partition layout in `flight_radar/partitions.csv`: one
+15 MB app slot (there is no OTA, so no second slot) with `nvs` at the same
+offset as before, so saved Wi-Fi networks survive the switch. Builds with the
+full table take about 90 s and flashing about 75 s. CI fails if the committed
+file is anything other than the stub; `CONTRIBUTING.md` explains how to keep a
+local table out of your commits.
 
 ## Regenerating generated files
 
@@ -244,7 +272,7 @@ tools/gen_airports.py [path-to-airports.csv]
 # rasterised with 8x supersampling into an LVGL alpha-8 C array.
 tools/gen_plane_sprite.py
 
-# Offline registration/type/model/operator table, Australian block only.
+# Offline registration/type/model/operator table (worldwide) and airline names.
 # Pass a local CSV path or a URL to OpenSky's aircraft database export
 # (https://s3.opensky-network.org/data-samples/metadata/aircraftDatabase.csv,
 # reached in practice via a redirect from opensky-network.org's own dataset
@@ -257,8 +285,7 @@ tools/gen_metadata_table.py <csv-path-or-url>
 tools/gen_test_fixture.py
 ```
 
-Re-run any of these after a data source updates, or to point the metadata
-table at a different address block. If `gen_metadata_table.py` can't reach
+Re-run any of these after a data source updates. If `gen_metadata_table.py` can't reach
 its source, the existing table stays as-is; the build does not depend on
 network access.
 
@@ -269,15 +296,13 @@ network access.
   finishes.
 - Trails are hidden while zooming or dragging the view, to keep those
   interactions responsive; they reappear once the gesture settles.
-- The detail card's bottom corners are visually clipped by the display's
-  round glass bezel on this panel.
 - A tap on an open detail card passes through to the scope beneath it (see
   "Using it" above) rather than being absorbed by the card.
 - There is no over-the-air update. TLS is pinned to ISRG Root X1, so if
   OpenSky's certificate chain ever moves off that root, the board stops
   connecting until it is reflashed over USB with firmware carrying the new
   root certificate.
-- The "ago" figure in the status bar and detail card includes OpenSky's own
+- The "updated Ns ago" figure on the detail card includes OpenSky's own
   reporting delay (typically 15-25 s) in addition to time since our last
   successful poll.
 

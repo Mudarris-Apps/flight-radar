@@ -1,5 +1,6 @@
 // status_bar.cpp: one centred 12 px label near the top of the scope.
 #include "status_bar.h"
+#include <Arduino.h>
 #include <cstdio>
 #include <cstring>
 #include "config.h"
@@ -30,12 +31,19 @@ void statusBarUpdate(lv_obj_t *bar) {
   char buf[64];
   switch (s.state) {
     case NetState::OK: {
-      uint32_t now = netNowEpoch();
-      uint32_t ago = now > s.last_poll_epoch ? now - s.last_poll_epoch : 0;
-      snprintf(buf, sizeof(buf), "%u aircraft" STATUS_SEP "%us ago", (unsigned)s.aircraft_count, (unsigned)ago);
+      // Time since the board last received data (not OpenSky's own, older timestamp),
+      // so it resets to 0 on every successful poll.
+      uint32_t ago = (millis() - s.last_poll_millis) / 1000;
+      snprintf(buf, sizeof(buf), "%u aircraft" STATUS_SEP "updated %us ago", (unsigned)s.aircraft_count, (unsigned)ago);
       break;
     }
-    case NetState::WIFI_CONNECTING: snprintf(buf, sizeof(buf), "WIFI CONNECTING"); break;
+    case NetState::WIFI_CONNECTING: {
+      // Joined, but the first flights have not arrived yet (locating, logging in, first poll).
+      char ssid[33];
+      netWifiConnectedSsid(ssid, sizeof(ssid));
+      snprintf(buf, sizeof(buf), ssid[0] ? "LOADING FLIGHTS..." : "WIFI CONNECTING");
+      break;
+    }
     case NetState::WIFI_DOWN:
       if (netWifiNeedsSetup()) snprintf(buf, sizeof(buf), "NO WIFI" STATUS_SEP "HOLD KNOB");
       else snprintf(buf, sizeof(buf), "WIFI DOWN");

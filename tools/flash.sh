@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # arduino-cli: $ARDUINO_CLI if set, else the one on PATH, else the copy bundled
 # with Arduino IDE 2 on macOS.
 CLI="${ARDUINO_CLI:-$(command -v arduino-cli || echo "/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli")}"
-FQBN="esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,USBMode=hwcdc,CDCOnBoot=cdc"
+FQBN="esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=custom,USBMode=hwcdc,CDCOnBoot=cdc"
 # First USB serial port: /dev/cu.usbmodem* on macOS, /dev/ttyACM* on Linux.
 PORT="${1:-$( { ls /dev/cu.usbmodem* /dev/ttyACM* 2>/dev/null || true; } | head -1)}"
 [ -n "$PORT" ] || { echo "no /dev/cu.usbmodem* or /dev/ttyACM* port found; pass the port as an argument" >&2; exit 1; }
